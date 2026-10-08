@@ -25,10 +25,10 @@ SOURCES = {"halfcheetah-medium-replay-v2": "http://rail.eecs.berkeley.edu/datase
            "hopper-expert-v2": "http://rail.eecs.berkeley.edu/datasets/offline_rl/gym_mujoco_v2/hopper_expert-v2.hdf5",
            "ant-expert-v2": "http://rail.eecs.berkeley.edu/datasets/offline_rl/gym_mujoco_v2/ant_expert-v2.hdf5",
 
-           "halfcheetah-full-replay-v2": "http://rail.eecs.berkeley.edu/datasets/offline_rl/gym_mujoco_v2/halfcheetah_full_replay-v2.hdf5",
-           "walker2d-full-replay-v2": "http://rail.eecs.berkeley.edu/datasets/offline_rl/gym_mujoco_v2/walker2d_full_replay-v2.hdf5",
-           "hopper-full-replay-v2": "http://rail.eecs.berkeley.edu/datasets/offline_rl/gym_mujoco_v2/hopper_full_replay-v2.hdf5",
-           "ant-full-replay-v2": "http://rail.eecs.berkeley.edu/datasets/offline_rl/gym_mujoco_v2/ant_full_replay-v2.hdf5",
+           "halfcheetah-medium-expert-v2": "http://rail.eecs.berkeley.edu/datasets/offline_rl/gym_mujoco_v2/halfcheetah_medium_expert-v2.hdf5",
+           "walker2d-medium-expert-v2": "http://rail.eecs.berkeley.edu/datasets/offline_rl/gym_mujoco_v2/walker2d_medium_expert-v2.hdf5",
+           "hopper-medium-expert-v2": "http://rail.eecs.berkeley.edu/datasets/offline_rl/gym_mujoco_v2/hopper_medium_expert-v2.hdf5",
+           "ant-medium-expert-v2": "http://rail.eecs.berkeley.edu/datasets/offline_rl/gym_mujoco_v2/ant_medium_expert-v2.hdf5",
            }
 
 def get_keys(h5file):
@@ -42,11 +42,23 @@ def get_keys(h5file):
     return keys
 
 
+# Same cache as D4RL (d4rl/offline_env.py), so the notebook reads the exact files the training runs use.
+# The SOURCES urls are D4RL's own urls, and D4RL names each file after the url.
+DATA_DIR = os.environ.get("D4RL_DATASET_DIR", os.path.expanduser("~/.d4rl/datasets"))
+
+
 def load(name, link):
-    os.makedirs("data", exist_ok=True)
-    h5path = os.path.join('.', 'data', name + '.hdf5')
+    os.makedirs(DATA_DIR, exist_ok=True)
+    h5path = os.path.join(DATA_DIR, os.path.basename(link))
     if not os.path.exists(h5path):
-        urllib.request.urlretrieve(link, h5path)
+        # download to a temp file so an interrupted download (e.g. disk quota) never leaves a truncated cache
+        tmppath = h5path + '.part'
+        try:
+            urllib.request.urlretrieve(link, tmppath)
+            os.replace(tmppath, h5path)
+        finally:
+            if os.path.exists(tmppath):
+                os.remove(tmppath)
 
     dataset = dict()
     with h5py.File(h5path, 'r') as dataset_file:
