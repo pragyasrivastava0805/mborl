@@ -1,4 +1,4 @@
-"""Job launcher for the Unifloral pool-of-20 experiments.
+"""Job launcher for Unifloral policy-pool experiments.
 
 Builds a deterministic job list (identical on every VM) and runs it on the local GPUs,
 several jobs per GPU. Re-running the same command skips jobs that already finished.
@@ -9,7 +9,8 @@ Groups:
   model_based  4 algorithms x 20 datasets x 20 policies = 1600 jobs
   all          model_free + model_based in one queue (4800 jobs)
 
-Each (algorithm, dataset) pool has 20 policies: policy i uses seed i and hyperparameters
+By default each pool has 20 policies; use --pool-size 10 for the initial campaign.
+Policy i uses seed i and hyperparameters
 sampled uniformly from that algorithm's sweep config (values lists in the yaml).
 
 Usage (see launcher.md):
@@ -120,7 +121,9 @@ def job_cost(algo, params):
     return cost
 
 
-def build_jobs(group):
+def build_jobs(group, pool_size=POOL_SIZE, seed_start=0):
+    if pool_size < 1 or seed_start < 0:
+        raise ValueError("pool_size must be positive and seed_start nonnegative")
     jobs = []
     if group == "dynamics":
         program, params = load_sweep(DYNAMICS_CONFIG)
@@ -131,13 +134,14 @@ def build_jobs(group):
                              program=program, params=p, cost=BASE_COST["dynamics"]))
         return jobs
     if group == "all":
-        return build_jobs("model_based") + build_jobs("model_free")
+        return (build_jobs("model_based", pool_size, seed_start)
+                + build_jobs("model_free", pool_size, seed_start))
 
     algos = MODEL_FREE if group == "model_free" else MODEL_BASED
     for algo, cfg in algos.items():
         program, params = load_sweep(cfg)
         for ds in DATASETS:
-            for i in range(POOL_SIZE):
+            for i in range(seed_start, seed_start + pool_size):
                 p = sample_params(params, stable_rng(algo, ds, i))
                 p.update(seed=i, dataset=ds)
                 if algos is MODEL_BASED:
@@ -151,6 +155,23 @@ def select_shard(jobs, shard, num_shards):
     """Longest jobs first, dealt round-robin so every shard gets a similar mix."""
     jobs = sorted(jobs, key=lambda j: (-j["cost"], j["id"]))
     return [j for k, j in enumerate(jobs) if k % num_shards == shard]
+
+
+def select_algorithms(jobs, algorithms):
+    """Filter before sharding so separate hardware queues never overlap."""
+    if algorithms is None:
+        return jobs
+    return [j for j in jobs if j["algo"] in algorithms]
+
+
+def gpu_devices(count):
+    """Preserve Slurm's assigned GPU indices or UUIDs in child processes."""
+    assigned = os.environ.get("CUDA_VISIBLE_DEVICES")
+    devices = assigned.split(",") if assigned is not None else list(map(str, range(count)))
+    devices = [d.strip() for d in devices if d.strip() and d.strip() != "-1"]
+    if len(devices) < count:
+        raise ValueError(f"Requested {count} GPUs but CUDA_VISIBLE_DEVICES exposes {devices}")
+    return devices[:count]
 
 
 def resolve_model_path(dataset, model_dir):
@@ -179,6 +200,8 @@ def make_command(job, cli):
             job["dataset"], os.path.join(cli.work_dir, cli.model_dir))
     if cli.eval_workers is not None and "eval_workers" in params:
         params["eval_workers"] = cli.eval_workers
+    if cli.eval_interval is not None and job["algo"] != "dynamics":
+        params["eval_interval"] = cli.eval_interval
     if cli.smoke:
         if job["algo"] == "dynamics":
             params["num_epochs"] = 2
@@ -192,6 +215,7 @@ def make_command(job, cli):
 
 
 def run(jobs, cli):
+    devices = gpu_devices(cli.gpus)
     # Jobs write final_returns/ and dynamics_models/ into their working directory
     log_dir = os.path.join(cli.work_dir, cli.log_dir)
     done_dir, fail_dir = os.path.join(log_dir, "done"), os.path.join(log_dir, "failed")
@@ -224,7 +248,7 @@ def run(jobs, cli):
                     print(f"[FAIL] {job['id']}: {e}", flush=True)
                 open(os.path.join(fail_dir, job["id"]), "w").write(str(e))
                 continue
-            env = dict(os.environ, CUDA_VISIBLE_DEVICES=str(gpu),
+            env = dict(os.environ, CUDA_VISIBLE_DEVICES=devices[gpu],
                        XLA_PYTHON_CLIENT_PREALLOCATE="false")
             start = time.time()
             with open(log_path, "w") as log:
@@ -277,21 +301,45 @@ def main():
     ap.add_argument("--shard", type=int, default=0)
     ap.add_argument("--num-shards", type=int, default=1)
     ap.add_argument("--gpus", type=int, default=8)
+    ap.add_argument("--pool-size", type=int, default=POOL_SIZE,
+                    help="policies per method/dataset (default: 20; initial campaign: 10)")
+    ap.add_argument("--seed-start", type=int, default=0,
+                    help="first policy seed; use 10 with --pool-size 10 to add seeds 10-19")
+    ap.add_argument("--algorithms", nargs="+", choices=sorted(MODEL_FREE | MODEL_BASED),
+                    help="filter methods before sharding; use launcher method keys")
+    ap.add_argument("--work-dir", default=ROOT,
+                    help="output directory (separate directories for Slurm shards)")
     ap.add_argument("--per-gpu", type=int, default=3)
     ap.add_argument("--eval-workers", type=int, default=None,
                     help="override eval_workers (CPU processes per run)")
+    ap.add_argument("--eval-interval", type=int, default=None,
+                    help="override intermediate evaluation frequency; changes training RNG sequence")
     ap.add_argument("--model-dir", default="dynamics_models")
     ap.add_argument("--log-dir", default="logs")
     ap.add_argument("--wandb", action="store_true", help="log runs to Weights & Biases")
     ap.add_argument("--wandb-entity", default=None)
     ap.add_argument("--wandb-project", default="unifloral")
-    ap.add_argument("--wandb-group", default="pool20")
+    ap.add_argument("--wandb-group", default=None)
     ap.add_argument("--dry-run", action="store_true", help="print the plan, run nothing")
     ap.add_argument("--smoke", action="store_true",
                     help="1 short job per algorithm on hopper-medium-v2 to test the setup; "
                          "outputs go to smoke_test/, not final_returns/")
     ap.add_argument("--prefetch", action="store_true", help="download all datasets and exit")
     cli = ap.parse_args()
+    if cli.pool_size < 1 or cli.seed_start < 0:
+        ap.error("--pool-size must be positive and --seed-start nonnegative")
+    if cli.wandb_group is None:
+        cli.wandb_group = f"pool{cli.pool_size}-seeds{cli.seed_start}-{cli.seed_start + cli.pool_size - 1}"
+    if cli.num_shards < 1 or not 0 <= cli.shard < cli.num_shards:
+        ap.error("require 0 <= --shard < --num-shards")
+    if cli.gpus < 1 or cli.per_gpu < 1:
+        ap.error("--gpus and --per-gpu must be positive")
+    if cli.eval_workers is not None and cli.eval_workers < 1:
+        ap.error("--eval-workers must be positive")
+    if cli.eval_interval is not None and cli.eval_interval < 1:
+        ap.error("--eval-interval must be positive")
+    if cli.group == "dynamics" and cli.algorithms:
+        ap.error("--algorithms applies to policy jobs, not dynamics")
 
     if cli.prefetch:
         return prefetch()
@@ -300,9 +348,13 @@ def main():
     if cli.wandb and not cli.wandb_entity:
         ap.error("--wandb needs --wandb-entity")
 
-    cli.work_dir = os.path.join(ROOT, "smoke_test") if cli.smoke else ROOT
+    cli.work_dir = os.path.abspath(cli.work_dir)
+    if cli.smoke:
+        cli.work_dir = os.path.join(cli.work_dir, "smoke_test")
     os.makedirs(cli.work_dir, exist_ok=True)
-    jobs = build_jobs(cli.group)
+    jobs = select_algorithms(build_jobs(cli.group, cli.pool_size, cli.seed_start), cli.algorithms)
+    if not jobs:
+        ap.error("no jobs match --group and --algorithms")
     if cli.smoke:
         seen, smoke = set(), []
         for j in jobs:
