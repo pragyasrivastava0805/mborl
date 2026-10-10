@@ -45,7 +45,7 @@ All of this is handled by `scripts/launch_jobs.py`. It builds the same job list 
 | `~/mborl/dynamics_models/` | this VM's 20 dynamics models |
 | `~/mborl/logs/` | `launcher.log`, per-job logs in `jobs/`, and `done/` and `failed/` markers |
 | `~/mborl/smoke_test/` | output of the smoke test only |
-| `~/.d4rl/datasets/` | the 20 datasets, shared by the training runs (via D4RL) and `evaluate.ipynb` (via `loader.py`) |
+| `/scratch/cluster/pragyas/d4rl/datasets/` | the 20 datasets, shared by the training runs (via D4RL) and `evaluate.ipynb` (via `loader.py`), configured by `D4RL_DATASET_DIR` in `env.sh` |
 
 ---
 
@@ -86,6 +86,7 @@ export LD_LIBRARY_PATH=$HOME/.mujoco/mujoco210/bin:${LD_LIBRARY_PATH}
 export MUJOCO_GL=osmesa
 export PYOPENGL_PLATFORM=osmesa
 export D4RL_SUPPRESS_IMPORT_ERROR=1
+export D4RL_DATASET_DIR=/scratch/cluster/pragyas/d4rl/datasets
 source $HOME/mborl/.venv/bin/activate
 EOF
 ```
@@ -110,7 +111,7 @@ If you use conda instead of uv, the equivalent is `conda create -n mborl python=
 Download the datasets **before** launching. Otherwise 24 jobs start downloading the same file at once and leave corrupted files.
 ```bash
 cd ~/mborl && source env.sh
-python scripts/launch_jobs.py --prefetch     # ~5.2 GB into ~/.d4rl/datasets
+python scripts/launch_jobs.py --prefetch     # ~5.2 GB into $D4RL_DATASET_DIR
 ```
 
 ### 1.6 Smoke test (about 15–30 min)
@@ -223,8 +224,8 @@ VS Code Remote-SSH also works: open the notebook and pick the `.venv` kernel.
 ### 6.1 `evaluate.ipynb`: dataset metrics (TQ and SACo)
 This notebook works out properties of the 20 datasets: trajectory quality (TQ, the dataset's mean return scaled between the random and expert datasets) and state-action coverage (SACo). It doesn't use any training results, so you can run it at any time, even while the experiments are running. It only uses the CPU.
 
-- **It uses the same dataset files as the training runs.** `loader.py` reads from D4RL's cache, `~/.d4rl/datasets/`, with D4RL's file names, so after the prefetch in 1.5 nothing is downloaded again. On a machine without the cache, the notebook downloads any missing file (~5.2 GB for all 20) to the same place. To use a different folder, set `D4RL_DATASET_DIR` before starting Jupyter; D4RL reads the same variable.
-- Run all cells from the top. Cell 2 computes the random and expert reference returns, and cell 3 loops over all 20 datasets and prints `dstype`, `tqs`, `sacos` and the normalised `sacos_`.
+- **It uses the same dataset files as the training runs.** Source `env.sh` before starting Jupyter so `loader.py` and D4RL both use `/scratch/cluster/pragyas/d4rl/datasets/`. After the prefetch in 1.5 nothing is downloaded again. On a machine without the cache, the notebook downloads any missing file (~5.2 GB for all 20) to the same place. Without `D4RL_DATASET_DIR`, both default to `~/.d4rl/datasets/`.
+- Run all cells from the top. Cell 2 computes the random and expert reference returns, and cell 3 loops over all 20 datasets and prints `dstype`, `tqs`, `sacos` and the normalised `sacos_`. It also saves `dataset_metrics.json` in the working directory, grouped by environment and then full dataset name. Each dataset contains `mean_return`, `tq`, `saco` (mean unique bin count over five random samples of 100,000 transitions without replacement), `saco_std`, `saco_sample_size`, `saco_seeds`, `saco_samples`, and `saco_normalized` (relative to that environment’s medium-replay dataset).
 - If you change `loader.py` or `D4RL_DATASET_DIR`, **restart the kernel**. The loader reads the setting only once, when it's first imported.
 - Downloads by the loader are written to a `.part` file first and renamed when complete, so an interrupted download never leaves a broken `.hdf5`. Just run the cell again.
 
