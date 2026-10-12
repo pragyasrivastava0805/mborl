@@ -262,14 +262,11 @@ def compute_model_discrepancy(train_state, dataset, elite_idxs, rng):
     @jax.jit
     def get_ensemble_samples(batch_obs_action):
         """Get mean predictions from ensemble dynamics model."""
-        # --- Extract elite model parameters to save on forward pass ---
-        params = frozen_dict.unfreeze(train_state.params)
-        ensemble_params = params["params"]["ensemble"]
-        ensemble_params = jax.tree_map(lambda p: p[elite_idxs], ensemble_params)
-        params["params"]["ensemble"] = ensemble_params
-        params = frozen_dict.freeze(params)
-        mean_obs_rew, _ = train_state.apply_fn(params, batch_obs_action)
-        return mean_obs_rew
+        # --- Run the full ensemble, then keep elite predictions ---
+        # (Slicing params to the elites breaks nn.vmap, whose axis_size is
+        # fixed to num_ensemble: "batch dimensions ... (7,) and (5,)".)
+        mean_obs_rew, _ = train_state.apply_fn(train_state.params, batch_obs_action)
+        return mean_obs_rew[elite_idxs]
 
     # --- Get elite model predictions across subset of dataset ---
     batch_size = 500
