@@ -1,6 +1,7 @@
 import glob
 import json
 import os
+import pickle
 import random
 import time
 from collections import defaultdict
@@ -14,7 +15,6 @@ from ml_collections import config_flags
 
 from agents import agents
 from envs.env_utils import make_env_and_datasets
-from envs.reward_utils import get_success_fn
 from utils.datasets import Dataset, ReplayBuffer, CDataset, GCDataset, HGCDataset, ACGCDataset, normalize, unnormalize
 from utils.evaluation import evaluate
 from utils.flax_utils import restore_agent, save_agent
@@ -24,6 +24,9 @@ FLAGS = flags.FLAGS
 
 flags.DEFINE_string('job_id', '', 'Job id')
 flags.DEFINE_string('run_group', 'Debug', 'Run group.')
+flags.DEFINE_bool('keep_last_checkpoint_only', False, 'Delete older params_*.pkl after each save (resume needs only the latest).')
+flags.DEFINE_bool('delete_checkpoints_on_finish', False, 'Delete all params_*.pkl when training finishes (logs are kept).')
+flags.DEFINE_string('wandb_mode', 'online', "wandb mode ('online', 'offline' or 'disabled').")
 flags.DEFINE_integer('seed', 0, 'Random seed.')
 flags.DEFINE_string('env_name', 'puzzle-4x5-play-oraclerep-v0', 'Environment (dataset) name.')
 flags.DEFINE_string('dataset_dir', None, 'Dataset directory.')
@@ -48,7 +51,7 @@ flags.DEFINE_boolean('normalize_obs', True, 'Normalize observations')
 flags.DEFINE_integer('mb_batch_size', 50000, 'batch size for model rollouts')
 flags.DEFINE_integer('mb_retain_epoch', 5, 'retaining for model rollouts')
 flags.DEFINE_integer('mb_rollout_freq', 1000, 'freq for model rollouts')
-flags.DEFINE_float('mb_batch_ratio', 0.5, 'ratio for model rollouts')
+flags.DEFINE_float('mb_batch_ratio', 0.5, 'fraction f of each training batch drawn from the real dataset (agents with a real_ratio config use that instead)')
 
 config_flags.DEFINE_config_file('agent', 'agents/sharsa.py', lock_config=False)
 
@@ -57,13 +60,17 @@ def main(_):
     if FLAGS.job_id and os.path.exists(f'wandb_id/{FLAGS.job_id}'):
         with open(f'wandb_id/{FLAGS.job_id}', 'r') as F:
             wandb_id, exp_name = F.read().split(' ')
-        setup_wandb(project='scalembrl', group=FLAGS.run_group, wandb_id=wandb_id)
+        setup_wandb(project='scalembrl', group=FLAGS.run_group, wandb_id=wandb_id, mode=FLAGS.wandb_mode)
     else:
         exp_name = get_exp_name(FLAGS.seed)
-        run = setup_wandb(project='scalembrl', group=FLAGS.run_group, name=exp_name)
+        if FLAGS.job_id:
+            # Runs launched together in one Slurm job share SLURM_JOB_ID and start second; the job id keeps them apart.
+            exp_name += f'_{FLAGS.job_id}'
+        run = setup_wandb(project='scalembrl', group=FLAGS.run_group, name=exp_name, mode=FLAGS.wandb_mode)
         wandb_id = run.id
    
     if FLAGS.job_id:
+        os.makedirs('wandb_id', exist_ok=True)
         with open(f'wandb_id/{FLAGS.job_id}', 'w') as F:
             F.write(f"{wandb_id} {exp_name}")
 
@@ -94,12 +101,15 @@ def main(_):
             'std': val_dataset[k].std(axis=0),
             'min': val_dataset[k].min(axis=0),
             'max': val_dataset[k].max(axis=0),
-          } for k in ['observations', 'oracle_reps']
+          } for k in ['observations', 'oracle_reps'] if k in val_dataset
         }
     else:
         scale = {
-          k: None for k in ['observations', 'oracle_reps']
+          k: None for k in ['observations', 'oracle_reps'] if k in val_dataset
         }
+
+    with open(os.path.join(FLAGS.save_dir, 'scale.pkl'), 'wb') as f:
+        pickle.dump(scale, f)
 
     # Initialize agent.
     random.seed(FLAGS.seed)
@@ -141,28 +151,63 @@ def main(_):
     last_time = time.time()
 
     rng = jax.random.PRNGKey(FLAGS.seed)
-    fake_data = defaultdict(list)
-    for _ in range(FLAGS.mb_retain_epoch):
-        rng, rollout_rng = jax.random.split(rng)
-        batch = train_dataset.sample(FLAGS.mb_batch_size)
-        fake_batch = agent.rollout(batch, rollout_rng)
-        for k, v in fake_batch.items():
-            fake_data[k].append(v)
-    fake_data = {k: np.concatenate(v, axis=0) for k, v in fake_data.items()}
-    fake_buffer = ReplayBuffer(Dataset.create(scale=scale, **fake_data))
-    fake_buffer.size = fake_buffer.max_size
 
-    for i in tqdm.tqdm(range(epoch+1, FLAGS.offline_steps + 1), smoothing=0.1, dynamic_ncols=True):
-        if i % FLAGS.mb_rollout_freq == 0:
-            rng, rollout_rng = jax.random.split(rng)
-            batch = train_dataset.sample(FLAGS.mb_batch_size)
-            fake_batch = agent.rollout(batch, rollout_rng)
-            fake_buffer.add_batch(fake_batch)
-
+    # Agents with a real_ratio (f) config define their own batch split; f = 1 uses no model data at all.
+    if 'real_ratio' in config:
+        real_batch_size, fake_batch_size, data_batch_size = agent.batch_sizes(config)
+    else:
         real_batch_size = int(config['batch_size'] * FLAGS.mb_batch_ratio)
         fake_batch_size = config['batch_size'] - real_batch_size
-        real_batch = train_dataset.sample(real_batch_size)
-        fake_batch = fake_buffer.sample(fake_batch_size)
+        data_batch_size = real_batch_size
+    use_model = fake_batch_size > 0 or 'real_ratio' not in config
+
+    # Pretrain the model for agents with a separate model phase (e.g. COMBO). A restored agent resumes or skips it.
+    if use_model and hasattr(agent, 'update_model') and int(agent.model.step) <= config['model_train_steps']:
+        model_logger = CsvLogger(os.path.join(FLAGS.save_dir, 'model.csv'))
+        holdout_batch = val_dataset.sample(config['model_holdout_size'])
+        for j in tqdm.tqdm(range(int(agent.model.step), config['model_train_steps'] + 1), desc='model', dynamic_ncols=True):
+            agent, model_info = agent.update_model(train_dataset.sample(config['batch_size']))
+            if j == 1 or j % FLAGS.log_interval == 0:
+                model_logger.log({f'model/{k}': v for k, v in model_info.items()}, step=j)
+        agent, holdout_info = agent.select_elites(holdout_batch)
+        holdout_info['holdout/elites'] = ' '.join(str(e) for e in np.array(agent.elites))
+        model_logger.log(holdout_info, step=config['model_train_steps'])
+        model_logger.close()
+        wandb.log({k: v for k, v in holdout_info.items() if k != 'holdout/elites'}, step=0)
+        wandb.run.summary['holdout/elites'] = holdout_info['holdout/elites']
+        print(f"Model pretraining done; elites {holdout_info['holdout/elites']}")
+
+        # Checkpoint the pretrained model as epoch 0 so restarts skip pretraining.
+        save_agent(agent, FLAGS.save_dir, 0)
+        if FLAGS.job_id:
+            with open(f'wandb_id/step_{FLAGS.job_id}', 'w') as F: F.write('0')
+
+    def add_rollouts(buffer, fake_batch):
+        # Rollouts are already in normalized model coordinates; add them without rescaling.
+        fake_batch = {k: np.asarray(v) for k, v in fake_batch.items()}
+        if 'rollout_valid' in fake_batch:
+            keep = fake_batch.pop('rollout_valid') > 0
+            fake_batch = {k: v[keep] for k, v in fake_batch.items()}
+        if buffer is None:
+            capacity = FLAGS.mb_retain_epoch * len(fake_batch['observations'])
+            buffer = ReplayBuffer.create({k: v[0] for k, v in fake_batch.items()}, size=capacity)
+        buffer.add_batch(fake_batch)
+        return buffer
+
+    fake_buffer = None
+    for _ in range(FLAGS.mb_retain_epoch if use_model else 0):
+        rng, rollout_rng = jax.random.split(rng)
+        batch = train_dataset.sample(FLAGS.mb_batch_size)
+        fake_buffer = add_rollouts(fake_buffer, agent.rollout(batch, rollout_rng))
+
+    for i in tqdm.tqdm(range(epoch+1, FLAGS.offline_steps + 1), smoothing=0.1, dynamic_ncols=True):
+        if use_model and i % FLAGS.mb_rollout_freq == 0:
+            rng, rollout_rng = jax.random.split(rng)
+            batch = train_dataset.sample(FLAGS.mb_batch_size)
+            fake_buffer = add_rollouts(fake_buffer, agent.rollout(batch, rollout_rng))
+
+        real_batch = train_dataset.sample(data_batch_size)
+        fake_batch = fake_buffer.sample(fake_batch_size) if use_model else None
         agent, update_info = agent.update(real_batch, fake_batch)
 
         # Log metrics.
@@ -173,7 +218,7 @@ def main(_):
                 update_info.update({f'metrics/{k}': v for k, v in add_metrics.items()})
             train_metrics = {f'training/{k}': v for k, v in update_info.items()}
 
-            val_batch = val_dataset.sample(real_batch_size)
+            val_batch = val_dataset.sample(data_batch_size)
             _, val_info = agent.total_loss(val_batch, fake_batch, grad_params=None)
             train_metrics.update({f'validation/{k}': v for k, v in val_info.items()})
 
@@ -260,6 +305,11 @@ def main(_):
             save_agent(agent, FLAGS.save_dir, i)
             if FLAGS.job_id:
                 with open(f'wandb_id/step_{FLAGS.job_id}', 'w') as F: F.write(f"{i}")
+            if FLAGS.keep_last_checkpoint_only:
+                # Delete only after the step file points at the new checkpoint, so a crash can always resume.
+                for path in glob.glob(os.path.join(FLAGS.save_dir, 'params_*.pkl')):
+                    if path != os.path.join(FLAGS.save_dir, f'params_{i}.pkl'):
+                        os.remove(path)
 
         if FLAGS.dataset_replace_interval != 0 and i % FLAGS.dataset_replace_interval == 0 and len(datasets) > 1:
             dataset_idx = (dataset_idx + 1) % len(datasets)
@@ -271,6 +321,12 @@ def main(_):
 
     train_logger.close()
     eval_logger.close()
+
+    if FLAGS.delete_checkpoints_on_finish:
+        for path in glob.glob(os.path.join(FLAGS.save_dir, 'params_*.pkl')):
+            os.remove(path)
+    with open(os.path.join(FLAGS.save_dir, 'DONE'), 'w') as f:
+        f.write(f'{FLAGS.offline_steps}\n')
 
 
 if __name__ == '__main__':

@@ -12,3 +12,4 @@ make_sbatch
 exp
 ipynbs
 data
+wandb_id/

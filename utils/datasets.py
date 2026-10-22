@@ -146,17 +146,18 @@ class ReplayBuffer(Dataset):
         left = self.max_size - self.pointer
         N = transitions['observations'].shape[0]
         if N > left:
-            add_batch(self, {k: v[:left] for k, v in transitions.items()})
-            add_batch(self, {k: v[left:] for k, v in transitions.items()})
+            self.add_batch({k: v[:left] for k, v in transitions.items()})
+            self.add_batch({k: v[left:] for k, v in transitions.items()})
             return
 
         _dict = unfreeze(self._dict)
         for k, v in transitions.items():
-            _dict[k] = np.array(_dict[k], copy=True)  
+            if not _dict[k].flags.writeable:
+                _dict[k] = np.array(_dict[k], copy=True)
             _dict[k][self.pointer: self.pointer + N] = v
         self._dict = freeze(_dict)
         self.pointer = (self.pointer + N) % self.max_size
-        self.size = max(self.pointer, self.size)
+        self.size = min(self.size + N, self.max_size)
 
     def clear(self):
         """Clear the replay buffer."""

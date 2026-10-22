@@ -8,6 +8,7 @@ from agents.fmpc import FMPCAgent
 from agents.leq import LEQAgent
 from agents.mopo import MOPOAgent
 from agents.mobile import MOBILEAgent
+from agents.combo import COMBOAgent
 
 # Our method
 from agents.mac import MACAgent
@@ -26,6 +27,7 @@ agents = dict(
     leq=LEQAgent,
     mopo=MOPOAgent,
     mobile=MOBILEAgent,
+    combo=COMBOAgent,
 
     mac=MACAgent,
 
