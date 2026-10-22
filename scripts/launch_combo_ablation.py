@@ -182,6 +182,8 @@ def main():
     parser.add_argument('--tasks', nargs='+', help='Subset of the suite tasks (default: all).')
     parser.add_argument('--env_name', help='Single environment (instead of --suite).')
     parser.add_argument('--dataset_dir', help='Dataset directory for --env_name.')
+    parser.add_argument('--data_root', default=OGBENCH_PREPARED,
+                        help='Directory holding one subdirectory of .npz files per --suite dataset.')
     parser.add_argument('--profile', default='ogbench', choices=['ogbench', 'paper'])
     parser.add_argument('--sweeps', nargs='+', default=['beta', 'f', 'horizon'], choices=['beta', 'f', 'horizon'])
     parser.add_argument('--one_at_a_time', action='store_true',
@@ -235,7 +237,7 @@ def main():
         unknown = set(names) - set(suite)
         if unknown:
             sys.exit(f'Unknown tasks for {args.suite}: {sorted(unknown)}')
-        envs = [(n, suite[n][0], os.path.join(OGBENCH_PREPARED, suite[n][1])) for n in names]
+        envs = [(n, suite[n][0], os.path.join(args.data_root, suite[n][1])) for n in names]
     elif args.env_name and args.dataset_dir:
         envs = [(args.env_name, args.env_name, args.dataset_dir)]
     else:
