@@ -7,7 +7,7 @@ from agents.gciql import GCIQLAgent
 from agents.qrl import QRLAgent
 from agents.crl import CRLAgent
 from agents.ngcsacbc import NGCSACBCAgent
-from agents.sharsa import SHARSAAgent
+from agents.hiql import HIQLAgent
 
 # Baselines (Model-based)
 from agents.mbpo import MBPOAgent
@@ -32,7 +32,7 @@ agents = dict(
     qrl=QRLAgent,
     crl=CRLAgent,
     ngcsacbc=NGCSACBCAgent,
-    sharsa=SHARSAAgent,
+    hiql=HIQLAgent,
 
     mbpo=MBPOAgent,
     mopo=MOPOAgent,

@@ -14,7 +14,7 @@ Supported baselines:
     - gciql      : Goal-Conditioned IQL (Park et al., 2025)
     - qrl        : Quasimetric RL (Wang et al., 2023; Park et al., 2025)
     - crl        : Contrastive RL (Eysenbach et al., 2022; Park et al., 2025)
-    - sharsa     : SHARSA hierarchical SARSA (Park et al., 2025)
+    - hiql       : Hierarchical Implicit Q-Learning (Park et al., 2023)
 """
 import argparse
 import json
@@ -26,12 +26,12 @@ REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DEFAULT_DATA_ROOT = '/home/rchitale_google_com/ogbench/prepared'
 
 MODEL_BASED_AGENTS = ('mbpo', 'mopo', 'combo')
-SINGLE_TASK_AGENTS = ('mbpo', 'mopo', 'combo', 'iql', 'cql', 'rebrac', 'nstep_iql')
-GOAL_COND_AGENTS = ('gciql', 'qrl', 'crl', 'sharsa')
+SINGLE_TASK_AGENTS = ('mbpo', 'mopo', 'combo', 'iql', 'cql', 'rebrac', 'nstep_iql', 'nstep_iql_n5', 'nstep_iql_n15')
+GOAL_COND_AGENTS = ('gciql', 'qrl', 'crl', 'hiql')
 ALL_BASELINES = (
     'mbpo', 'mopo', 'combo',
-    'iql', 'cql', 'rebrac', 'nstep_iql',
-    'gciql', 'qrl', 'crl', 'sharsa',
+    'iql', 'cql', 'rebrac', 'nstep_iql_n5', 'nstep_iql_n15',
+    'gciql', 'qrl', 'crl', 'hiql',
 )
 
 STITCH_ENVS = (
@@ -87,11 +87,12 @@ SUITES = {
 def build_command(args, baseline, env_name, dataset_dir, seed, job_id):
     is_singletask = 'singletask' in env_name
     entrypoint = 'main_mbpo.py' if baseline in MODEL_BASED_AGENTS else 'main.py'
+    agent_module = 'nstep_iql' if baseline.startswith('nstep_iql') else baseline
 
     flags = [
         f'--env_name={env_name}',
         f'--dataset_dir={dataset_dir}',
-        f'--agent=agents/{baseline}.py',
+        f'--agent=agents/{agent_module}.py',
         f'--seed={seed}',
         f'--run_group={args.run_group or f"baselines_{baseline}_{env_name}"}',
         f'--job_id={job_id}',
@@ -112,6 +113,12 @@ def build_command(args, baseline, env_name, dataset_dir, seed, job_id):
             flags.append('--agent.dataset_class=CDataset')
         else:
             flags.append('--agent.dataset_class=GCDataset')
+    elif baseline == 'nstep_iql_n5':
+        flags.append('--agent.nstep=5')
+        flags.append('--agent.dataset_class=NStepCDataset')
+    elif baseline == 'nstep_iql_n15':
+        flags.append('--agent.nstep=15')
+        flags.append('--agent.dataset_class=NStepCDataset')
     elif baseline == 'nstep_iql':
         flags.append(f'--agent.nstep={args.nstep}')
         flags.append('--agent.dataset_class=NStepCDataset')
@@ -129,8 +136,8 @@ def build_command(args, baseline, env_name, dataset_dir, seed, job_id):
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument('--suite', default='stitch_task1', choices=sorted(SUITES))
-    parser.add_argument('--baselines', nargs='+', default=list(ALL_BASELINES), choices=list(ALL_BASELINES))
-    parser.add_argument('--seeds', nargs='+', type=int, default=[0])
+    parser.add_argument('--baselines', nargs='+', default=list(ALL_BASELINES), choices=list(ALL_BASELINES) + ['nstep_iql'])
+    parser.add_argument('--seeds', nargs='+', type=int, default=[0, 1, 2, 3, 4])
     parser.add_argument('--nstep', type=int, default=5, help='Horizon n for nstep_iql.')
     parser.add_argument('--offline_steps', type=int, default=500000)
     parser.add_argument('--eval_interval', type=int, default=100000)
