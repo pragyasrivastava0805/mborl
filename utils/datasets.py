@@ -80,6 +80,8 @@ class Dataset(FrozenDict):
         result = jax.tree_util.tree_map(lambda arr: arr[idxs], self._dict)
         if 'next_observations' not in result:
             result['next_observations'] = self._dict['observations'][np.minimum(idxs + 1, self.size - 1)]
+        if 'next_actions' not in result and 'actions' in self._dict:
+            result['next_actions'] = self._dict['actions'][np.minimum(idxs + 1, self.size - 1)]
         return result
 
 
@@ -775,6 +777,73 @@ class ACDataset:
     def get_observations(self, idxs):
         """Return the observations for the given indices."""
         return jax.tree_util.tree_map(lambda arr: arr[idxs], self.dataset['observations'])
+
+
+@dataclasses.dataclass
+class NStepCDataset:
+    """Dataset class for same-episode n-step single-task RL (e.g., Same-Episode n-Step IQL).
+
+    Computes n-step discounted returns and bootstrap discounts strictly within the same dataset trajectory,
+    truncating at the trajectory boundary so transitions never cross episodes.
+    """
+
+    dataset: Dataset
+    config: Any
+
+    def __post_init__(self):
+        self.size = self.dataset.size
+        (self.terminal_locs,) = np.nonzero(self.dataset['terminals'] > 0)
+        self.initial_locs = np.concatenate([[0], self.terminal_locs[:-1] + 1])
+        valid_idxs = []
+        for i in range(len(self.initial_locs)):
+            valid_idxs.append(np.arange(self.initial_locs[i], self.terminal_locs[i] - 1))
+        self.valid_idxs = np.concatenate(valid_idxs)
+        assert self.terminal_locs[-1] == self.size - 1
+
+    def sample(self, batch_size: int, idxs=None, evaluation=False):
+        if idxs is None:
+            idxs = np.random.choice(self.valid_idxs, size=batch_size)
+
+        batch = self.dataset.sample(0, idxs)
+        nstep = int(self.config.get('nstep', 5))
+        gamma = float(self.config.get('discount', 0.99))
+
+        # Last valid transition index in the same episode is terminal_locs[ep] - 1.
+        ep_idx = np.searchsorted(self.terminal_locs, idxs)
+        last_trans = self.terminal_locs[ep_idx] - 1
+
+        nstep_rewards = np.zeros(len(idxs), dtype=np.float32)
+        nstep_discounts = np.ones(len(idxs), dtype=np.float32)
+        alive = np.ones(len(idxs), dtype=np.float32)
+
+        all_rewards = self.dataset['rewards']
+        all_masks = self.dataset['masks']
+
+        for k in range(nstep):
+            step_idxs = np.minimum(idxs + k, last_trans)
+            in_ep = (idxs + k <= last_trans).astype(np.float32)
+            active = alive * in_ep
+            nstep_rewards += active * (gamma ** k) * all_rewards[step_idxs]
+            step_mask = all_masks[step_idxs]
+            nstep_discounts *= np.where(active > 0, gamma * step_mask, 1.0)
+            alive *= in_ep * step_mask
+
+        # Number of valid transitions taken in the same episode (at least 1).
+        steps_taken = np.clip(last_trans - idxs + 1, 1, nstep)
+        last_step_idxs = idxs + steps_taken - 1
+        if 'next_observations' in self.dataset._dict:
+            nstep_next_obs = self.dataset._dict['next_observations'][last_step_idxs]
+        else:
+            nstep_next_obs = self.dataset._dict['observations'][np.minimum(last_step_idxs + 1, self.size - 1)]
+
+        batch['nstep_rewards'] = nstep_rewards
+        batch['nstep_discounts'] = nstep_discounts
+        batch['nstep_next_observations'] = nstep_next_obs
+        return batch
+
+    def get_observations(self, idxs):
+        return jax.tree_util.tree_map(lambda arr: arr[idxs], self.dataset['observations'])
+
 
 
 

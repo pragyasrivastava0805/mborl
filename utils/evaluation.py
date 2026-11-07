@@ -92,7 +92,8 @@ def evaluate(
         while not done:
             if len(action_chunks) == 0:
                 observation_norm = normalize(scale['observations'], observation)
-                goal_norm = None if goal is None else normalize(scale['oracle_reps'], goal)
+                goal_key = 'oracle_reps' if (scale is not None and 'oracle_reps' in scale) else 'observations'
+                goal_norm = None if goal is None else normalize(scale[goal_key], goal)
                 action, action_info = actor_fn(observations=observation_norm, goals=goal_norm, temperature=eval_temperature)
                 action = np.array(action)
                 if eval_gaussian is not None:

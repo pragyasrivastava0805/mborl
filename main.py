@@ -13,8 +13,7 @@ from absl import app, flags
 from ml_collections import config_flags
 
 from agents import agents
-from envs.reward_utils import get_success_fn
-from utils.datasets import Dataset, CDataset, GCDataset, HGCDataset, ACGCDataset, ACDataset, normalize, unnormalize
+from utils.datasets import Dataset, CDataset, NStepCDataset, GCDataset, HGCDataset, ACGCDataset, ACDataset, normalize, unnormalize
 from utils.evaluation import evaluate
 from utils.flax_utils import restore_agent, save_agent
 from utils.log_utils import CsvLogger, get_exp_name, get_flag_dict, get_wandb_video, setup_wandb
@@ -23,6 +22,9 @@ FLAGS = flags.FLAGS
 
 flags.DEFINE_string('job_id', '', 'Job id')
 flags.DEFINE_string('run_group', 'Debug', 'Run group.')
+flags.DEFINE_bool('keep_last_checkpoint_only', False, 'Delete older params_*.pkl after each save (resume needs only the latest).')
+flags.DEFINE_bool('delete_checkpoints_on_finish', False, 'Delete all params_*.pkl when training finishes (logs are kept).')
+flags.DEFINE_string('wandb_mode', 'online', "wandb mode ('online', 'offline' or 'disabled').")
 flags.DEFINE_integer('seed', 0, 'Random seed.')
 flags.DEFINE_string('env_name', 'puzzle-4x5-play-oraclerep-v0', 'Environment (dataset) name.')
 flags.DEFINE_string('env_suite', 'ogbench', 'Suite name.')
@@ -53,13 +55,16 @@ def main(_):
     if FLAGS.job_id and os.path.exists(f'wandb_id/{FLAGS.job_id}'):
         with open(f'wandb_id/{FLAGS.job_id}', 'r') as F:
             wandb_id, exp_name = F.read().split(' ')
-        setup_wandb(project='scalembrl', group=FLAGS.run_group, wandb_id=wandb_id)
+        setup_wandb(project='scalembrl', group=FLAGS.run_group, wandb_id=wandb_id, mode=FLAGS.wandb_mode)
     else:
         exp_name = get_exp_name(FLAGS.seed)
-        run = setup_wandb(project='scalembrl', group=FLAGS.run_group, name=exp_name)
+        if FLAGS.job_id:
+            exp_name += f'_{FLAGS.job_id}'
+        run = setup_wandb(project='scalembrl', group=FLAGS.run_group, name=exp_name, mode=FLAGS.wandb_mode)
         wandb_id = run.id
    
     if FLAGS.job_id:
+        os.makedirs('wandb_id', exist_ok=True)
         with open(f'wandb_id/{FLAGS.job_id}', 'w') as F:
             F.write(f"{wandb_id} {exp_name}")
 
@@ -115,6 +120,7 @@ def main(_):
         'ACGCDataset': ACGCDataset,
         'ACDataset': ACDataset,
         'CDataset': CDataset,
+        'NStepCDataset': NStepCDataset,
     }
     dataset_class = dataset_class_dict[config['dataset_class']]
     train_dataset = dataset_class(Dataset.create(scale=scale, **train_dataset), config)
@@ -258,6 +264,10 @@ def main(_):
             save_agent(agent, FLAGS.save_dir, i)
             if FLAGS.job_id:
                 with open(f'wandb_id/step_{FLAGS.job_id}', 'w') as F: F.write(f"{i}")
+            if FLAGS.keep_last_checkpoint_only:
+                for path in glob.glob(os.path.join(FLAGS.save_dir, 'params_*.pkl')):
+                    if path != os.path.join(FLAGS.save_dir, f'params_{i}.pkl'):
+                        os.remove(path)
 
         if FLAGS.dataset_replace_interval != 0 and i % FLAGS.dataset_replace_interval == 0 and len(datasets) > 1:
             dataset_idx = (dataset_idx + 1) % len(datasets)
@@ -269,6 +279,12 @@ def main(_):
 
     train_logger.close()
     eval_logger.close()
+
+    if FLAGS.delete_checkpoints_on_finish:
+        for path in glob.glob(os.path.join(FLAGS.save_dir, 'params_*.pkl')):
+            os.remove(path)
+    with open(os.path.join(FLAGS.save_dir, 'DONE'), 'w') as f:
+        f.write(f'{FLAGS.offline_steps}\n')
 
 
 if __name__ == '__main__':

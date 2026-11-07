@@ -15,7 +15,7 @@ from ml_collections import config_flags
 
 from agents import agents
 from envs.env_utils import make_env_and_datasets
-from utils.datasets import Dataset, ReplayBuffer, CDataset, GCDataset, HGCDataset, ACGCDataset, normalize, unnormalize
+from utils.datasets import Dataset, ReplayBuffer, CDataset, NStepCDataset, GCDataset, HGCDataset, ACGCDataset, normalize, unnormalize
 from utils.evaluation import evaluate
 from utils.flax_utils import restore_agent, save_agent
 from utils.log_utils import CsvLogger, get_exp_name, get_flag_dict, get_wandb_video, setup_wandb
@@ -117,6 +117,7 @@ def main(_):
 
     dataset_class_dict = {
         'CDataset': CDataset,
+        'NStepCDataset': NStepCDataset,
         'GCDataset': GCDataset,
         'HGCDataset': HGCDataset,
         'ACGCDataset': ACGCDataset,

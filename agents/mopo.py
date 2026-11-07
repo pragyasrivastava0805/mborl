@@ -234,9 +234,9 @@ class MOPOAgent(flax.struct.PyTreeNode):
                 'observations': jnp.concatenate(rollout_data['observations'], axis=0),
                 'actions': jnp.concatenate(rollout_data['actions'], axis=0),
                 'next_observations': jnp.concatenate(rollout_data['next_observations'], axis=0),
-                'rewards': jnp.concatenate(rollout_data['rewards'], axis=0),
-                'value_goals': rollout_value_goals, 
-                'actor_goals': rollout_actor_goals, 
+                'rewards': jnp.concatenate(rewards, axis=0),
+                'value_goals': jnp.concatenate(rollout_value_goals, axis=0),
+                'actor_goals': jnp.concatenate(rollout_actor_goals, axis=0),
                 'masks': jnp.concatenate(rollout_data['masks'], axis=0)
             }
         else:
