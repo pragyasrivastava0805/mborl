@@ -52,6 +52,9 @@ flags.DEFINE_integer('mb_batch_size', 50000, 'batch size for model rollouts')
 flags.DEFINE_integer('mb_retain_epoch', 5, 'retaining for model rollouts')
 flags.DEFINE_integer('mb_rollout_freq', 1000, 'freq for model rollouts')
 flags.DEFINE_float('mb_batch_ratio', 0.5, 'fraction f of each training batch drawn from the real dataset (agents with a real_ratio config use that instead)')
+flags.DEFINE_string('frozen_rollout_path', None, 'Path to checkpoint directory whose frozen model and policy generate rollouts.')
+flags.DEFINE_integer('frozen_rollout_epoch', 500000, 'Checkpoint epoch for frozen_rollout_path.')
+flags.DEFINE_string('rollout_depth_subset', 'all', "Rollout depth slice to keep: 'all', '1_5', '6_10', or '1_10_matched'.")
 
 config_flags.DEFINE_config_file('agent', 'agents/sharsa.py', lock_config=False)
 
@@ -144,6 +147,14 @@ def main(_):
     if FLAGS.restore_path is not None:
         agent = restore_agent(agent, FLAGS.restore_path, FLAGS.restore_epoch)
 
+    rollout_agent = None
+    rollout_rng_stream = jax.random.PRNGKey(10000 + FLAGS.seed)
+    rollout_np_rng = np.random.RandomState(10000 + FLAGS.seed)
+    if FLAGS.frozen_rollout_path is not None:
+        rollout_agent = restore_agent(agent, FLAGS.frozen_rollout_path, FLAGS.frozen_rollout_epoch)
+        agent = agent.replace(model=rollout_agent.model, elites=rollout_agent.elites)
+        print(f"Loaded frozen rollout model+policy from {FLAGS.frozen_rollout_path} (epoch {FLAGS.frozen_rollout_epoch}), depth_subset={FLAGS.rollout_depth_subset}")
+
     # Train agent.
     train_logger = CsvLogger(os.path.join(FLAGS.save_dir, 'train.csv'))
     eval_logger = CsvLogger(os.path.join(FLAGS.save_dir, 'eval.csv'))
@@ -194,17 +205,50 @@ def main(_):
         buffer.add_batch(fake_batch)
         return buffer
 
+    def generate_rollout_batch():
+        nonlocal rng, rollout_rng_stream
+        r_agent = rollout_agent if FLAGS.frozen_rollout_path is not None else agent
+        H = config['rollout_steps']
+        total_B = FLAGS.mb_batch_size
+        chunk_size = 50000
+        chunks = []
+        for start in range(0, total_B, chunk_size):
+            cur_B = min(chunk_size, total_B - start)
+            if FLAGS.frozen_rollout_path is not None:
+                rollout_rng_stream, sub_rng = jax.random.split(rollout_rng_stream)
+                idxs = rollout_np_rng.choice(train_dataset.valid_idxs, size=cur_B)
+                batch = train_dataset.sample(cur_B, idxs=idxs)
+            else:
+                rng, sub_rng = jax.random.split(rng)
+                batch = train_dataset.sample(cur_B)
+            raw = r_agent.rollout(batch, sub_rng)
+            raw = {k: np.asarray(v) for k, v in raw.items()}
+            if FLAGS.rollout_depth_subset != 'all':
+                shaped = {k: v.reshape((H, cur_B) + v.shape[1:]) for k, v in raw.items()}
+                if FLAGS.rollout_depth_subset == '1_5':
+                    assert H >= 5
+                    raw = {k: v[0:5, :].reshape((5 * cur_B,) + v.shape[2:]) for k, v in shaped.items()}
+                elif FLAGS.rollout_depth_subset == '6_10':
+                    assert H >= 10
+                    raw = {k: v[5:10, :].reshape((5 * cur_B,) + v.shape[2:]) for k, v in shaped.items()}
+                elif FLAGS.rollout_depth_subset == '1_10_matched':
+                    assert H == 10
+                    half_B = cur_B // 2
+                    raw = {k: v[0:10, :half_B].reshape((10 * half_B,) + v.shape[2:]) for k, v in shaped.items()}
+                else:
+                    raise ValueError(f'Unknown rollout_depth_subset: {FLAGS.rollout_depth_subset}')
+            chunks.append(raw)
+        if len(chunks) == 1:
+            return chunks[0]
+        return {k: np.concatenate([c[k] for c in chunks], axis=0) for k in chunks[0]}
+
     fake_buffer = None
     for _ in range(FLAGS.mb_retain_epoch if use_model else 0):
-        rng, rollout_rng = jax.random.split(rng)
-        batch = train_dataset.sample(FLAGS.mb_batch_size)
-        fake_buffer = add_rollouts(fake_buffer, agent.rollout(batch, rollout_rng))
+        fake_buffer = add_rollouts(fake_buffer, generate_rollout_batch())
 
     for i in tqdm.tqdm(range(epoch+1, FLAGS.offline_steps + 1), smoothing=0.1, dynamic_ncols=True):
         if use_model and i % FLAGS.mb_rollout_freq == 0:
-            rng, rollout_rng = jax.random.split(rng)
-            batch = train_dataset.sample(FLAGS.mb_batch_size)
-            fake_buffer = add_rollouts(fake_buffer, agent.rollout(batch, rollout_rng))
+            fake_buffer = add_rollouts(fake_buffer, generate_rollout_batch())
 
         real_batch = train_dataset.sample(data_batch_size)
         fake_batch = fake_buffer.sample(fake_batch_size) if use_model else None

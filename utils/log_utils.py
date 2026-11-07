@@ -21,15 +21,30 @@ class CsvLogger:
     def log(self, row, step):
         row['step'] = step
         if self.file is None:
-            self.file = open(self.path, 'w')
-            if self.header is None:
-                self.header = [k for k, v in row.items() if not isinstance(v, self.disallowed_types)]
-                self.file.write(','.join(self.header) + '\n')
-            filtered_row = {k: v for k, v in row.items() if not isinstance(v, self.disallowed_types)}
-            self.file.write(','.join([str(filtered_row.get(k, '')) for k in self.header]) + '\n')
-        else:
-            filtered_row = {k: v for k, v in row.items() if not isinstance(v, self.disallowed_types)}
-            self.file.write(','.join([str(filtered_row.get(k, '')) for k in self.header]) + '\n')
+            if os.path.exists(self.path) and os.path.getsize(self.path) > 0:
+                with open(self.path, 'r') as f:
+                    lines = [line for line in f.read().splitlines() if line.strip()]
+                if lines:
+                    self.header = lines[0].split(',')
+                    step_idx = self.header.index('step') if 'step' in self.header else None
+                    kept = [lines[0]]
+                    for line in lines[1:]:
+                        if step_idx is not None:
+                            try:
+                                if float(line.split(',')[step_idx]) < step:
+                                    kept.append(line)
+                            except Exception:
+                                kept.append(line)
+                    with open(self.path, 'w') as f:
+                        f.write('\n'.join(kept) + '\n')
+                    self.file = open(self.path, 'a')
+            if self.file is None:
+                self.file = open(self.path, 'w')
+                if self.header is None:
+                    self.header = [k for k, v in row.items() if not isinstance(v, self.disallowed_types)]
+                    self.file.write(','.join(self.header) + '\n')
+        filtered_row = {k: v for k, v in row.items() if not isinstance(v, self.disallowed_types)}
+        self.file.write(','.join([str(filtered_row.get(k, '')) for k in self.header]) + '\n')
         self.file.flush()
 
     def close(self):
