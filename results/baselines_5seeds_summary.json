@@ -1,0 +1,775 @@
+{
+  "seeds": [
+    0,
+    1,
+    2,
+    3,
+    4
+  ],
+  "environments": [
+    "pointmaze-medium-stitch-v0",
+    "pointmaze-large-stitch-v0",
+    "antmaze-medium-stitch-v0",
+    "antmaze-large-stitch-v0",
+    "humanoidmaze-medium-stitch-v0"
+  ],
+  "total_seed_runs": 300,
+  "baselines": {
+    "mbpo": {
+      "family": "Model-Based Forward",
+      "module": "agents/mbpo.py",
+      "environments": {
+        "pointmaze-medium-stitch-v0": {
+          "seeds": [
+            100.0,
+            100.0,
+            20.0,
+            100.0,
+            100.0
+          ],
+          "mean": 84.0,
+          "std": 32.0
+        },
+        "pointmaze-large-stitch-v0": {
+          "seeds": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "mean": 0.0,
+          "std": 0.0
+        },
+        "antmaze-medium-stitch-v0": {
+          "seeds": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "mean": 0.0,
+          "std": 0.0
+        },
+        "antmaze-large-stitch-v0": {
+          "seeds": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "mean": 0.0,
+          "std": 0.0
+        },
+        "humanoidmaze-medium-stitch-v0": {
+          "seeds": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "mean": 0.0,
+          "std": 0.0
+        }
+      },
+      "five_env_mean": 16.8,
+      "five_env_mean_std": 6.4
+    },
+    "mopo": {
+      "family": "Model-Based Forward",
+      "module": "agents/mopo.py",
+      "environments": {
+        "pointmaze-medium-stitch-v0": {
+          "seeds": [
+            100.0,
+            100.0,
+            100.0,
+            100.0,
+            100.0
+          ],
+          "mean": 100.0,
+          "std": 0.0
+        },
+        "pointmaze-large-stitch-v0": {
+          "seeds": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "mean": 0.0,
+          "std": 0.0
+        },
+        "antmaze-medium-stitch-v0": {
+          "seeds": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "mean": 0.0,
+          "std": 0.0
+        },
+        "antmaze-large-stitch-v0": {
+          "seeds": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "mean": 0.0,
+          "std": 0.0
+        },
+        "humanoidmaze-medium-stitch-v0": {
+          "seeds": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "mean": 0.0,
+          "std": 0.0
+        }
+      },
+      "five_env_mean": 20.0,
+      "five_env_mean_std": 0.0
+    },
+    "combo": {
+      "family": "Model-Based Forward",
+      "module": "agents/combo.py",
+      "environments": {
+        "pointmaze-medium-stitch-v0": {
+          "seeds": [
+            60.0,
+            10.0,
+            95.0,
+            30.0,
+            100.0
+          ],
+          "mean": 59.0,
+          "std": 35.27
+        },
+        "pointmaze-large-stitch-v0": {
+          "seeds": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "mean": 0.0,
+          "std": 0.0
+        },
+        "antmaze-medium-stitch-v0": {
+          "seeds": [
+            15.0,
+            0.0,
+            5.0,
+            5.0,
+            5.0
+          ],
+          "mean": 6.0,
+          "std": 4.9
+        },
+        "antmaze-large-stitch-v0": {
+          "seeds": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "mean": 0.0,
+          "std": 0.0
+        },
+        "humanoidmaze-medium-stitch-v0": {
+          "seeds": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "mean": 0.0,
+          "std": 0.0
+        }
+      },
+      "five_env_mean": 13.0,
+      "five_env_mean_std": 8.03
+    },
+    "iql": {
+      "family": "Model-Free 1-Step",
+      "module": "agents/iql.py",
+      "environments": {
+        "pointmaze-medium-stitch-v0": {
+          "seeds": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "mean": 0.0,
+          "std": 0.0
+        },
+        "pointmaze-large-stitch-v0": {
+          "seeds": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "mean": 0.0,
+          "std": 0.0
+        },
+        "antmaze-medium-stitch-v0": {
+          "seeds": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "mean": 0.0,
+          "std": 0.0
+        },
+        "antmaze-large-stitch-v0": {
+          "seeds": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "mean": 0.0,
+          "std": 0.0
+        },
+        "humanoidmaze-medium-stitch-v0": {
+          "seeds": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "mean": 0.0,
+          "std": 0.0
+        }
+      },
+      "five_env_mean": 0.0,
+      "five_env_mean_std": 0.0
+    },
+    "cql": {
+      "family": "Model-Free 1-Step",
+      "module": "agents/cql.py",
+      "environments": {
+        "pointmaze-medium-stitch-v0": {
+          "seeds": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "mean": 0.0,
+          "std": 0.0
+        },
+        "pointmaze-large-stitch-v0": {
+          "seeds": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "mean": 0.0,
+          "std": 0.0
+        },
+        "antmaze-medium-stitch-v0": {
+          "seeds": [
+            10.0,
+            10.0,
+            0.0,
+            10.0,
+            10.0
+          ],
+          "mean": 8.0,
+          "std": 4.0
+        },
+        "antmaze-large-stitch-v0": {
+          "seeds": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "mean": 0.0,
+          "std": 0.0
+        },
+        "humanoidmaze-medium-stitch-v0": {
+          "seeds": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "mean": 0.0,
+          "std": 0.0
+        }
+      },
+      "five_env_mean": 1.6,
+      "five_env_mean_std": 0.8
+    },
+    "rebrac": {
+      "family": "Model-Free 1-Step",
+      "module": "agents/rebrac.py",
+      "environments": {
+        "pointmaze-medium-stitch-v0": {
+          "seeds": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "mean": 0.0,
+          "std": 0.0
+        },
+        "pointmaze-large-stitch-v0": {
+          "seeds": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "mean": 0.0,
+          "std": 0.0
+        },
+        "antmaze-medium-stitch-v0": {
+          "seeds": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "mean": 0.0,
+          "std": 0.0
+        },
+        "antmaze-large-stitch-v0": {
+          "seeds": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "mean": 0.0,
+          "std": 0.0
+        },
+        "humanoidmaze-medium-stitch-v0": {
+          "seeds": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "mean": 0.0,
+          "std": 0.0
+        }
+      },
+      "five_env_mean": 0.0,
+      "five_env_mean_std": 0.0
+    },
+    "nstep_iql_n5": {
+      "family": "Model-Free Multi-Step",
+      "module": "agents/nstep_iql.py (n=5)",
+      "environments": {
+        "pointmaze-medium-stitch-v0": {
+          "seeds": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "mean": 0.0,
+          "std": 0.0
+        },
+        "pointmaze-large-stitch-v0": {
+          "seeds": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "mean": 0.0,
+          "std": 0.0
+        },
+        "antmaze-medium-stitch-v0": {
+          "seeds": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "mean": 0.0,
+          "std": 0.0
+        },
+        "antmaze-large-stitch-v0": {
+          "seeds": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "mean": 0.0,
+          "std": 0.0
+        },
+        "humanoidmaze-medium-stitch-v0": {
+          "seeds": [
+            5.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "mean": 1.0,
+          "std": 2.0
+        }
+      },
+      "five_env_mean": 0.2,
+      "five_env_mean_std": 0.4
+    },
+    "nstep_iql_n15": {
+      "family": "Model-Free Multi-Step",
+      "module": "agents/nstep_iql.py (n=15)",
+      "environments": {
+        "pointmaze-medium-stitch-v0": {
+          "seeds": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "mean": 0.0,
+          "std": 0.0
+        },
+        "pointmaze-large-stitch-v0": {
+          "seeds": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "mean": 0.0,
+          "std": 0.0
+        },
+        "antmaze-medium-stitch-v0": {
+          "seeds": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "mean": 0.0,
+          "std": 0.0
+        },
+        "antmaze-large-stitch-v0": {
+          "seeds": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "mean": 0.0,
+          "std": 0.0
+        },
+        "humanoidmaze-medium-stitch-v0": {
+          "seeds": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "mean": 0.0,
+          "std": 0.0
+        }
+      },
+      "five_env_mean": 0.0,
+      "five_env_mean_std": 0.0
+    },
+    "gciql": {
+      "family": "Model-Free Goal-Conditioned",
+      "module": "agents/gciql.py",
+      "environments": {
+        "pointmaze-medium-stitch-v0": {
+          "seeds": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "mean": 0.0,
+          "std": 0.0
+        },
+        "pointmaze-large-stitch-v0": {
+          "seeds": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "mean": 0.0,
+          "std": 0.0
+        },
+        "antmaze-medium-stitch-v0": {
+          "seeds": [
+            0.0,
+            0.0,
+            0.0,
+            5.0,
+            5.0
+          ],
+          "mean": 2.0,
+          "std": 2.45
+        },
+        "antmaze-large-stitch-v0": {
+          "seeds": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "mean": 0.0,
+          "std": 0.0
+        },
+        "humanoidmaze-medium-stitch-v0": {
+          "seeds": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "mean": 0.0,
+          "std": 0.0
+        }
+      },
+      "five_env_mean": 0.4,
+      "five_env_mean_std": 0.49
+    },
+    "qrl": {
+      "family": "Model-Free Goal-Conditioned",
+      "module": "agents/qrl.py",
+      "environments": {
+        "pointmaze-medium-stitch-v0": {
+          "seeds": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "mean": 0.0,
+          "std": 0.0
+        },
+        "pointmaze-large-stitch-v0": {
+          "seeds": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "mean": 0.0,
+          "std": 0.0
+        },
+        "antmaze-medium-stitch-v0": {
+          "seeds": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "mean": 0.0,
+          "std": 0.0
+        },
+        "antmaze-large-stitch-v0": {
+          "seeds": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "mean": 0.0,
+          "std": 0.0
+        },
+        "humanoidmaze-medium-stitch-v0": {
+          "seeds": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "mean": 0.0,
+          "std": 0.0
+        }
+      },
+      "five_env_mean": 0.0,
+      "five_env_mean_std": 0.0
+    },
+    "crl": {
+      "family": "Model-Free Goal-Conditioned",
+      "module": "agents/crl.py",
+      "environments": {
+        "pointmaze-medium-stitch-v0": {
+          "seeds": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "mean": 0.0,
+          "std": 0.0
+        },
+        "pointmaze-large-stitch-v0": {
+          "seeds": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "mean": 0.0,
+          "std": 0.0
+        },
+        "antmaze-medium-stitch-v0": {
+          "seeds": [
+            0.0,
+            0.0,
+            5.0,
+            5.0,
+            5.0
+          ],
+          "mean": 3.0,
+          "std": 2.45
+        },
+        "antmaze-large-stitch-v0": {
+          "seeds": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "mean": 0.0,
+          "std": 0.0
+        },
+        "humanoidmaze-medium-stitch-v0": {
+          "seeds": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "mean": 0.0,
+          "std": 0.0
+        }
+      },
+      "five_env_mean": 0.6,
+      "five_env_mean_std": 0.49
+    },
+    "hiql": {
+      "family": "Model-Free Hierarchical",
+      "module": "agents/hiql.py",
+      "environments": {
+        "pointmaze-medium-stitch-v0": {
+          "seeds": [
+            100.0,
+            100.0,
+            100.0,
+            100.0,
+            100.0
+          ],
+          "mean": 100.0,
+          "std": 0.0
+        },
+        "pointmaze-large-stitch-v0": {
+          "seeds": [
+            100.0,
+            100.0,
+            100.0,
+            100.0,
+            95.0
+          ],
+          "mean": 99.0,
+          "std": 2.0
+        },
+        "antmaze-medium-stitch-v0": {
+          "seeds": [
+            5.0,
+            45.0,
+            40.0,
+            20.0,
+            20.0
+          ],
+          "mean": 26.0,
+          "std": 14.63
+        },
+        "antmaze-large-stitch-v0": {
+          "seeds": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            5.0
+          ],
+          "mean": 1.0,
+          "std": 2.0
+        },
+        "humanoidmaze-medium-stitch-v0": {
+          "seeds": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "mean": 0.0,
+          "std": 0.0
+        }
+      },
+      "five_env_mean": 45.2,
+      "five_env_mean_std": 3.73
+    }
+  }
+}
