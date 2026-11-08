@@ -2,10 +2,11 @@
 
 Supported baselines:
   Model-based (via main_mbpo.py):
-    - mbpo       : MBPO (Janner et al., 2019), unpenalized H-step rollouts (beta = 0.0)
-    - mopo       : MOPO (Yu et al., 2020), uncertainty-penalized H-step rollouts (beta = 1.0)
-    - morel      : MOReL (Kidambi et al., 2020), USAD uncertainty-truncated P-MDP rollouts (morel_thresh = 0.5, halt_penalty = -10.0)
-    - combo      : COMBO (Yu et al., 2021), conservative Q-learning on real + model rollouts (real_ratio = 0.5, beta = 1.0)
+    - mbpo          : MBPO (Janner et al., 2019), unpenalized H-step rollouts (beta = 0.0)
+    - mopo          : MOPO (Yu et al., 2020), uncertainty-penalized H-step rollouts (beta = 1.0)
+    - morel         : MOReL (Kidambi et al., 2020), USAD uncertainty-truncated forward P-MDP rollouts (morel_thresh = 0.5, halt_penalty = -10.0)
+    - reverse_morel : Reverse-MoREL, USAD uncertainty-truncated reverse rollouts anchored on dataset states (morel_thresh = 0.5)
+    - combo         : COMBO (Yu et al., 2021), conservative Q-learning on real + model rollouts (real_ratio = 0.5, beta = 1.0)
   Model-free single-task & multi-step (via main.py):
     - iql        : IQL (Kostrikov et al., 2022), 1-step expectile Q-learning
     - cql        : CQL (Kumar et al., 2020), conservative Q-learning on real data only
@@ -26,11 +27,11 @@ import time
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DEFAULT_DATA_ROOT = '/home/rchitale_google_com/ogbench/prepared'
 
-MODEL_BASED_AGENTS = ('mbpo', 'mopo', 'morel', 'combo')
-SINGLE_TASK_AGENTS = ('mbpo', 'mopo', 'morel', 'combo', 'iql', 'cql', 'rebrac', 'nstep_iql', 'nstep_iql_n5', 'nstep_iql_n15')
+MODEL_BASED_AGENTS = ('mbpo', 'mopo', 'morel', 'reverse_morel', 'combo')
+SINGLE_TASK_AGENTS = ('mbpo', 'mopo', 'morel', 'reverse_morel', 'combo', 'iql', 'cql', 'rebrac', 'nstep_iql', 'nstep_iql_n5', 'nstep_iql_n15')
 GOAL_COND_AGENTS = ('gciql', 'qrl', 'crl', 'hiql')
 ALL_BASELINES = (
-    'mbpo', 'mopo', 'morel', 'combo',
+    'mbpo', 'mopo', 'morel', 'reverse_morel', 'combo',
     'iql', 'cql', 'rebrac', 'nstep_iql_n5', 'nstep_iql_n15',
     'gciql', 'qrl', 'crl', 'hiql',
 )

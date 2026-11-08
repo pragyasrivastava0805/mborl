@@ -1,0 +1,71 @@
+Baseline,Family,Environment,Task 1 (%),Task 2 (%),Task 3 (%),Task 4 (%),Task 5 (%),5-Task Mean (%)
+mbpo,Model-Based Forward,pointmaze-medium-stitch-v0,84.0 +/- 32.0,42.0 +/- 12.9,62.0 +/- 11.2,54.0 +/- 15.0,52.0 +/- 19.9,58.8 +/- 8.4
+mbpo,Model-Based Forward,pointmaze-large-stitch-v0,0.0 +/- 0.0,0.0 +/- 0.0,38.0 +/- 15.7,31.0 +/- 11.1,7.0 +/- 5.1,15.2 +/- 4.9
+mbpo,Model-Based Forward,antmaze-medium-stitch-v0,0.0 +/- 0.0,8.0 +/- 9.3,20.0 +/- 3.2,6.0 +/- 7.3,11.0 +/- 8.0,9.0 +/- 1.1
+mbpo,Model-Based Forward,antmaze-large-stitch-v0,0.0 +/- 0.0,0.0 +/- 0.0,0.0 +/- 0.0,0.0 +/- 0.0,0.0 +/- 0.0,0.0 +/- 0.0
+mbpo,Model-Based Forward,humanoidmaze-medium-stitch-v0,0.0 +/- 0.0,0.0 +/- 0.0,0.0 +/- 0.0,0.0 +/- 0.0,0.0 +/- 0.0,0.0 +/- 0.0
+mopo,Model-Based Forward,pointmaze-medium-stitch-v0,100.0 +/- 0.0,42.0 +/- 9.8,63.0 +/- 13.6,43.0 +/- 14.7,50.0 +/- 17.6,59.6 +/- 5.0
+mopo,Model-Based Forward,pointmaze-large-stitch-v0,0.0 +/- 0.0,0.0 +/- 0.0,36.0 +/- 13.9,28.0 +/- 14.7,11.0 +/- 3.7,15.0 +/- 3.7
+mopo,Model-Based Forward,antmaze-medium-stitch-v0,0.0 +/- 0.0,4.0 +/- 4.9,18.0 +/- 6.8,2.0 +/- 2.5,6.0 +/- 3.7,6.0 +/- 2.6
+mopo,Model-Based Forward,antmaze-large-stitch-v0,0.0 +/- 0.0,0.0 +/- 0.0,0.0 +/- 0.0,0.0 +/- 0.0,0.0 +/- 0.0,0.0 +/- 0.0
+mopo,Model-Based Forward,humanoidmaze-medium-stitch-v0,0.0 +/- 0.0,0.0 +/- 0.0,0.0 +/- 0.0,0.0 +/- 0.0,0.0 +/- 0.0,0.0 +/- 0.0
+morel,Model-Based Forward,pointmaze-medium-stitch-v0,92.0 +/- 2.5,46.0 +/- 14.3,75.0 +/- 10.9,65.0 +/- 11.4,62.0 +/- 18.6,68.0 +/- 4.9
+morel,Model-Based Forward,pointmaze-large-stitch-v0,0.0 +/- 0.0,0.0 +/- 0.0,34.0 +/- 11.6,33.0 +/- 13.3,16.0 +/- 7.3,16.6 +/- 3.6
+morel,Model-Based Forward,antmaze-medium-stitch-v0,10.0 +/- 5.5,11.0 +/- 6.6,34.0 +/- 12.4,8.0 +/- 7.5,15.0 +/- 5.5,15.6 +/- 2.4
+morel,Model-Based Forward,antmaze-large-stitch-v0,0.0 +/- 0.0,0.0 +/- 0.0,0.0 +/- 0.0,0.0 +/- 0.0,0.0 +/- 0.0,0.0 +/- 0.0
+morel,Model-Based Forward,humanoidmaze-medium-stitch-v0,0.0 +/- 0.0,0.0 +/- 0.0,0.0 +/- 0.0,0.0 +/- 0.0,0.0 +/- 0.0,0.0 +/- 0.0
+reverse_morel,"Model-Based Reverse (USAD-Truncated, Dataset-Anchored)",pointmaze-medium-stitch-v0,100.0 +/- 0.0,100.0 +/- 0.0,100.0 +/- 0.0,100.0 +/- 0.0,100.0 +/- 0.0,100.0 +/- 0.0
+reverse_morel,"Model-Based Reverse (USAD-Truncated, Dataset-Anchored)",pointmaze-large-stitch-v0,82.0 +/- 4.0,100.0 +/- 0.0,100.0 +/- 0.0,100.0 +/- 0.0,98.0 +/- 2.5,96.0 +/- 0.6
+reverse_morel,"Model-Based Reverse (USAD-Truncated, Dataset-Anchored)",antmaze-medium-stitch-v0,35.0 +/- 8.9,55.0 +/- 4.5,63.0 +/- 8.1,40.0 +/- 9.5,55.0 +/- 5.5,49.6 +/- 3.9
+reverse_morel,"Model-Based Reverse (USAD-Truncated, Dataset-Anchored)",antmaze-large-stitch-v0,12.0 +/- 6.8,6.0 +/- 3.7,39.0 +/- 12.4,24.0 +/- 10.2,16.0 +/- 12.0,19.4 +/- 3.3
+reverse_morel,"Model-Based Reverse (USAD-Truncated, Dataset-Anchored)",humanoidmaze-medium-stitch-v0,10.0 +/- 8.4,12.0 +/- 8.1,16.0 +/- 4.9,9.0 +/- 13.2,11.0 +/- 3.7,11.6 +/- 5.1
+combo,Model-Based Forward,pointmaze-medium-stitch-v0,59.0 +/- 35.3,32.0 +/- 8.7,52.0 +/- 15.4,32.0 +/- 5.1,43.0 +/- 14.0,43.6 +/- 6.4
+combo,Model-Based Forward,pointmaze-large-stitch-v0,0.0 +/- 0.0,0.0 +/- 0.0,28.0 +/- 7.5,9.0 +/- 6.6,0.0 +/- 0.0,7.4 +/- 1.7
+combo,Model-Based Forward,antmaze-medium-stitch-v0,6.0 +/- 4.9,0.0 +/- 0.0,15.0 +/- 6.3,1.0 +/- 2.0,4.0 +/- 2.0,5.2 +/- 1.6
+combo,Model-Based Forward,antmaze-large-stitch-v0,0.0 +/- 0.0,0.0 +/- 0.0,0.0 +/- 0.0,0.0 +/- 0.0,0.0 +/- 0.0,0.0 +/- 0.0
+combo,Model-Based Forward,humanoidmaze-medium-stitch-v0,0.0 +/- 0.0,0.0 +/- 0.0,0.0 +/- 0.0,0.0 +/- 0.0,0.0 +/- 0.0,0.0 +/- 0.0
+iql,Model-Free 1-Step,pointmaze-medium-stitch-v0,0.0 +/- 0.0,0.0 +/- 0.0,100.0 +/- 0.0,0.0 +/- 0.0,0.0 +/- 0.0,20.0 +/- 0.0
+iql,Model-Free 1-Step,pointmaze-large-stitch-v0,0.0 +/- 0.0,0.0 +/- 0.0,0.0 +/- 0.0,0.0 +/- 0.0,0.0 +/- 0.0,0.0 +/- 0.0
+iql,Model-Free 1-Step,antmaze-medium-stitch-v0,0.0 +/- 0.0,0.0 +/- 0.0,1.0 +/- 2.0,0.0 +/- 0.0,0.0 +/- 0.0,0.2 +/- 0.4
+iql,Model-Free 1-Step,antmaze-large-stitch-v0,0.0 +/- 0.0,0.0 +/- 0.0,0.0 +/- 0.0,0.0 +/- 0.0,0.0 +/- 0.0,0.0 +/- 0.0
+iql,Model-Free 1-Step,humanoidmaze-medium-stitch-v0,0.0 +/- 0.0,0.0 +/- 0.0,0.0 +/- 0.0,0.0 +/- 0.0,0.0 +/- 0.0,0.0 +/- 0.0
+cql,Model-Free 1-Step,pointmaze-medium-stitch-v0,0.0 +/- 0.0,0.0 +/- 0.0,100.0 +/- 0.0,0.0 +/- 0.0,30.0 +/- 16.1,26.0 +/- 3.2
+cql,Model-Free 1-Step,pointmaze-large-stitch-v0,0.0 +/- 0.0,0.0 +/- 0.0,0.0 +/- 0.0,0.0 +/- 0.0,0.0 +/- 0.0,0.0 +/- 0.0
+cql,Model-Free 1-Step,antmaze-medium-stitch-v0,8.0 +/- 4.0,0.0 +/- 0.0,6.0 +/- 5.8,0.0 +/- 0.0,0.0 +/- 0.0,2.8 +/- 1.2
+cql,Model-Free 1-Step,antmaze-large-stitch-v0,0.0 +/- 0.0,0.0 +/- 0.0,0.0 +/- 0.0,0.0 +/- 0.0,0.0 +/- 0.0,0.0 +/- 0.0
+cql,Model-Free 1-Step,humanoidmaze-medium-stitch-v0,0.0 +/- 0.0,0.0 +/- 0.0,0.0 +/- 0.0,0.0 +/- 0.0,0.0 +/- 0.0,0.0 +/- 0.0
+rebrac,Model-Free 1-Step,pointmaze-medium-stitch-v0,0.0 +/- 0.0,0.0 +/- 0.0,97.0 +/- 4.0,0.0 +/- 0.0,0.0 +/- 0.0,19.4 +/- 0.8
+rebrac,Model-Free 1-Step,pointmaze-large-stitch-v0,0.0 +/- 0.0,0.0 +/- 0.0,0.0 +/- 0.0,0.0 +/- 0.0,0.0 +/- 0.0,0.0 +/- 0.0
+rebrac,Model-Free 1-Step,antmaze-medium-stitch-v0,0.0 +/- 0.0,0.0 +/- 0.0,0.0 +/- 0.0,0.0 +/- 0.0,0.0 +/- 0.0,0.0 +/- 0.0
+rebrac,Model-Free 1-Step,antmaze-large-stitch-v0,0.0 +/- 0.0,0.0 +/- 0.0,0.0 +/- 0.0,0.0 +/- 0.0,0.0 +/- 0.0,0.0 +/- 0.0
+rebrac,Model-Free 1-Step,humanoidmaze-medium-stitch-v0,0.0 +/- 0.0,0.0 +/- 0.0,0.0 +/- 0.0,0.0 +/- 0.0,0.0 +/- 0.0,0.0 +/- 0.0
+nstep_iql_n5,Model-Free Multi-Step,pointmaze-medium-stitch-v0,0.0 +/- 0.0,13.0 +/- 7.5,99.0 +/- 2.0,65.0 +/- 11.4,100.0 +/- 0.0,55.4 +/- 2.3
+nstep_iql_n5,Model-Free Multi-Step,pointmaze-large-stitch-v0,0.0 +/- 0.0,0.0 +/- 0.0,0.0 +/- 0.0,0.0 +/- 0.0,0.0 +/- 0.0,0.0 +/- 0.0
+nstep_iql_n5,Model-Free Multi-Step,antmaze-medium-stitch-v0,0.0 +/- 0.0,0.0 +/- 0.0,51.0 +/- 8.6,0.0 +/- 0.0,0.0 +/- 0.0,10.2 +/- 1.7
+nstep_iql_n5,Model-Free Multi-Step,antmaze-large-stitch-v0,0.0 +/- 0.0,0.0 +/- 0.0,0.0 +/- 0.0,0.0 +/- 0.0,0.0 +/- 0.0,0.0 +/- 0.0
+nstep_iql_n5,Model-Free Multi-Step,humanoidmaze-medium-stitch-v0,1.0 +/- 2.0,0.0 +/- 0.0,0.0 +/- 0.0,0.0 +/- 0.0,0.0 +/- 0.0,0.2 +/- 0.4
+nstep_iql_n15,Model-Free Multi-Step,pointmaze-medium-stitch-v0,0.0 +/- 0.0,98.0 +/- 2.5,100.0 +/- 0.0,100.0 +/- 0.0,100.0 +/- 0.0,79.6 +/- 0.5
+nstep_iql_n15,Model-Free Multi-Step,pointmaze-large-stitch-v0,0.0 +/- 0.0,0.0 +/- 0.0,0.0 +/- 0.0,0.0 +/- 0.0,0.0 +/- 0.0,0.0 +/- 0.0
+nstep_iql_n15,Model-Free Multi-Step,antmaze-medium-stitch-v0,0.0 +/- 0.0,0.0 +/- 0.0,57.0 +/- 17.5,0.0 +/- 0.0,10.0 +/- 8.4,13.4 +/- 4.8
+nstep_iql_n15,Model-Free Multi-Step,antmaze-large-stitch-v0,0.0 +/- 0.0,0.0 +/- 0.0,0.0 +/- 0.0,0.0 +/- 0.0,0.0 +/- 0.0,0.0 +/- 0.0
+nstep_iql_n15,Model-Free Multi-Step,humanoidmaze-medium-stitch-v0,0.0 +/- 0.0,0.0 +/- 0.0,0.0 +/- 0.0,0.0 +/- 0.0,0.0 +/- 0.0,0.0 +/- 0.0
+gciql,Model-Free Goal-Conditioned,pointmaze-medium-stitch-v0,0.0 +/- 0.0,0.0 +/- 0.0,99.0 +/- 2.0,0.0 +/- 0.0,100.0 +/- 0.0,39.8 +/- 0.4
+gciql,Model-Free Goal-Conditioned,pointmaze-large-stitch-v0,0.0 +/- 0.0,0.0 +/- 0.0,0.0 +/- 0.0,0.0 +/- 0.0,0.0 +/- 0.0,0.0 +/- 0.0
+gciql,Model-Free Goal-Conditioned,antmaze-medium-stitch-v0,2.0 +/- 2.5,0.0 +/- 0.0,43.0 +/- 12.5,0.0 +/- 0.0,0.0 +/- 0.0,9.0 +/- 2.6
+gciql,Model-Free Goal-Conditioned,antmaze-large-stitch-v0,0.0 +/- 0.0,0.0 +/- 0.0,0.0 +/- 0.0,0.0 +/- 0.0,0.0 +/- 0.0,0.0 +/- 0.0
+gciql,Model-Free Goal-Conditioned,humanoidmaze-medium-stitch-v0,0.0 +/- 0.0,0.0 +/- 0.0,0.0 +/- 0.0,0.0 +/- 0.0,0.0 +/- 0.0,0.0 +/- 0.0
+qrl,Model-Free Goal-Conditioned,pointmaze-medium-stitch-v0,0.0 +/- 0.0,0.0 +/- 0.0,99.0 +/- 2.0,0.0 +/- 0.0,98.0 +/- 4.0,39.4 +/- 1.2
+qrl,Model-Free Goal-Conditioned,pointmaze-large-stitch-v0,0.0 +/- 0.0,0.0 +/- 0.0,0.0 +/- 0.0,0.0 +/- 0.0,0.0 +/- 0.0,0.0 +/- 0.0
+qrl,Model-Free Goal-Conditioned,antmaze-medium-stitch-v0,0.0 +/- 0.0,0.0 +/- 0.0,31.0 +/- 8.6,0.0 +/- 0.0,0.0 +/- 0.0,6.2 +/- 1.7
+qrl,Model-Free Goal-Conditioned,antmaze-large-stitch-v0,0.0 +/- 0.0,0.0 +/- 0.0,0.0 +/- 0.0,0.0 +/- 0.0,0.0 +/- 0.0,0.0 +/- 0.0
+qrl,Model-Free Goal-Conditioned,humanoidmaze-medium-stitch-v0,0.0 +/- 0.0,0.0 +/- 0.0,0.0 +/- 0.0,0.0 +/- 0.0,0.0 +/- 0.0,0.0 +/- 0.0
+crl,Model-Free Goal-Conditioned,pointmaze-medium-stitch-v0,0.0 +/- 0.0,0.0 +/- 0.0,100.0 +/- 0.0,2.0 +/- 4.0,100.0 +/- 0.0,40.4 +/- 0.8
+crl,Model-Free Goal-Conditioned,pointmaze-large-stitch-v0,0.0 +/- 0.0,0.0 +/- 0.0,0.0 +/- 0.0,0.0 +/- 0.0,0.0 +/- 0.0,0.0 +/- 0.0
+crl,Model-Free Goal-Conditioned,antmaze-medium-stitch-v0,3.0 +/- 2.5,0.0 +/- 0.0,46.0 +/- 8.6,0.0 +/- 0.0,0.0 +/- 0.0,9.8 +/- 2.1
+crl,Model-Free Goal-Conditioned,antmaze-large-stitch-v0,0.0 +/- 0.0,0.0 +/- 0.0,0.0 +/- 0.0,0.0 +/- 0.0,0.0 +/- 0.0,0.0 +/- 0.0
+crl,Model-Free Goal-Conditioned,humanoidmaze-medium-stitch-v0,0.0 +/- 0.0,0.0 +/- 0.0,0.0 +/- 0.0,0.0 +/- 0.0,0.0 +/- 0.0,0.0 +/- 0.0
+hiql,Model-Free Hierarchical,pointmaze-medium-stitch-v0,100.0 +/- 0.0,100.0 +/- 0.0,100.0 +/- 0.0,100.0 +/- 0.0,100.0 +/- 0.0,100.0 +/- 0.0
+hiql,Model-Free Hierarchical,pointmaze-large-stitch-v0,99.0 +/- 2.0,100.0 +/- 0.0,100.0 +/- 0.0,100.0 +/- 0.0,100.0 +/- 0.0,99.8 +/- 0.4
+hiql,Model-Free Hierarchical,antmaze-medium-stitch-v0,26.0 +/- 14.6,37.0 +/- 10.3,57.0 +/- 7.5,36.0 +/- 10.7,51.0 +/- 7.3,41.4 +/- 2.0
+hiql,Model-Free Hierarchical,antmaze-large-stitch-v0,1.0 +/- 2.0,0.0 +/- 0.0,8.0 +/- 6.8,4.0 +/- 5.8,0.0 +/- 0.0,2.6 +/- 1.6
+hiql,Model-Free Hierarchical,humanoidmaze-medium-stitch-v0,0.0 +/- 0.0,0.0 +/- 0.0,0.0 +/- 0.0,0.0 +/- 0.0,0.0 +/- 0.0,0.0 +/- 0.0

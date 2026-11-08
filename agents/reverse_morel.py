@@ -1,0 +1,428 @@
+import copy
+from functools import partial
+from typing import Any
+
+import flax
+import jax
+import jax.numpy as jnp
+import ml_collections
+import optax
+
+from agents.mopo import get_config as get_mopo_config
+from utils.flax_utils import ModuleDict, TrainState, nonpytree_field
+from utils.networks import Dynamics, GCActor, GCValue, LogParam
+
+sg = lambda x: jax.lax.stop_gradient(x)
+
+
+class ReverseMOReLAgent(flax.struct.PyTreeNode):
+    """Reverse-MoREL: Dataset-Anchored Reverse Model Rollouts with MoREL USAD Uncertainty Truncation.
+
+    Uses the exact same Unknown State-Action Detector (USAD) ensemble discrepancy criterion as
+    MOReL (Kidambi et al., NeurIPS 2020), applied to backward rollouts anchored on D_real:
+      1. Reverse world model pretraining (`update_model` & `select_elites`):
+         - Train an M-member reverse dynamics ensemble `reverse_dynamics(s_{t+1}, a_t) -> s_t`
+           and a reverse action sampler `reverse_actor(s_{t+1}) -> a_t` on real transitions,
+           alongside `reward` and `success` heads.
+         - Select the top `num_elites` reverse dynamics members and calibrate `usad_thresh`
+           via `mean(disc_real) + morel_thresh_std_mult * std(disc_real)` on held-out transitions.
+      2. Dataset-anchored USAD-truncated reverse rollouts (`rollout`):
+         - Anchor step 0 at a real dataset target state `s_anchor = s_{t+H} in D_real`.
+         - Roll backward k = 1..H steps: sample `a_tilde ~ reverse_actor(s_cur)` and
+           `s_prev ~ reverse_dynamics(s_cur, a_tilde)`, checking USAD discrepancy
+           `disc(s_cur, a_tilde) = max_{i, j} || mu_i_rev(s_cur, a_tilde) - mu_j_rev(s_cur, a_tilde) ||_2`.
+         - As soon as `disc > usad_thresh` (`USAD = 1`), truncate the backward chain (`rollout_valid = 0.0`
+           for step k and all k' > k). Every surviving step 1 <= m < k is emitted in forward causal order
+           `(s_prev, a_tilde, r_hat, s_cur)` and chains forward directly into `s_anchor in D_real`
+           without a terminal HALT cliff.
+      3. Policy optimization (`update`): Train actor, critic, and entropy temperature on pooled
+         real and valid reverse-anchored transitions while `model` remains frozen.
+    """
+
+    rng: Any
+    network: Any
+    model: Any
+    elites: Any
+    usad_thresh: Any
+    config: Any = nonpytree_field()
+
+    @staticmethod
+    def bce_loss(pred_logit, target):
+        log_pred = jax.nn.log_sigmoid(pred_logit)
+        log_not_pred = jax.nn.log_sigmoid(-pred_logit)
+        return -(log_pred * target + log_not_pred * (1 - target))
+
+    # ------------------------------------------------------------------ #
+    # Step 1: Reverse model pretraining & USAD calibration
+    # ------------------------------------------------------------------ #
+
+    def model_loss(self, batch, grad_params, rng):
+        goals = batch['value_goals'] if 'value_goals' in batch else None
+
+        # Reverse dynamics p_hat_rev(s_t | s_{t+1}, a_t)
+        rev_dist = self.model.select('reverse_dynamics')(
+            batch['next_observations'], batch['actions'], params=grad_params
+        )
+        dynamics_loss = -rev_dist.log_prob(batch['observations'][None]).mean()
+        dynamics_mse = jnp.square(rev_dist.mean() - batch['observations'][None]).mean()
+
+        # Reverse behavior action sampler pi_rev(a_t | s_{t+1})
+        rev_act_dist = self.model.select('reverse_actor')(
+            batch['next_observations'], goals=goals, params=grad_params
+        )
+        rev_actor_loss = -rev_act_dist.log_prob( jnp.clip(batch['actions'], -1.0 + 1e-5, 1.0 - 1e-5) ).mean()
+
+        succ_logit = self.model.select('success')(
+            batch['observations'], goals, batch['actions'], params=grad_params
+        )
+        success = jax.nn.sigmoid(succ_logit)
+        success_target = 1 - batch['masks']
+        success_loss = self.bce_loss(succ_logit, success_target).mean()
+
+        rewards = self.model.select('reward')(
+            batch['observations'], goals, batch['actions'], params=grad_params
+        )
+        reward_loss = jnp.square(rewards - batch['rewards']).mean()
+
+        loss = dynamics_loss + rev_actor_loss + success_loss + reward_loss
+        return loss, {
+            'dynamics/dynamics_loss': dynamics_loss,
+            'dynamics/dynamics_mse': dynamics_mse,
+            'dynamics/reverse_actor_loss': rev_actor_loss,
+            'success/success_loss': success_loss,
+            'success/success_mean': success.mean(),
+            'reward/reward_loss': reward_loss,
+            'reward/reward_mean': rewards.mean(),
+        }
+
+    @jax.jit
+    def update_model(self, batch):
+        """Take one gradient step on the reverse world model during pretraining."""
+        new_rng, rng = jax.random.split(self.rng)
+
+        def loss_fn(grad_params):
+            return self.model_loss(batch, grad_params, rng)
+
+        new_model, info = self.model.apply_loss_fn(loss_fn=loss_fn)
+        return self.replace(model=new_model, rng=new_rng), info
+
+    def compute_discrepancy(self, next_observations, actions):
+        """Compute max pairwise L2 reverse ensemble mean discrepancy U_USAD(s_{t+1}, a_t)."""
+        dist = self.model.select('reverse_dynamics')(next_observations, actions)
+        means = dist.mean()  # (num_dynamics, batch_size, ob_dim)
+        diffs = means[:, None, :, :] - means[None, :, :, :]  # (M, M, B, D)
+        pairwise_l2 = jnp.linalg.norm(diffs, axis=-1)  # (M, M, B)
+        return pairwise_l2.max(axis=(0, 1))  # (B,)
+
+    @jax.jit
+    def select_elites(self, holdout_batch):
+        """Select elite reverse dynamics members and calibrate USAD threshold on held-out real transitions."""
+        dist = self.model.select('reverse_dynamics')(
+            holdout_batch['next_observations'], holdout_batch['actions']
+        )
+        member_mse = jnp.square(dist.mean() - holdout_batch['observations'][None]).mean(axis=(1, 2))
+        elites = jnp.argsort(member_mse)[: self.config['num_elites']].astype(jnp.int32)
+
+        disc = self.compute_discrepancy(holdout_batch['next_observations'], holdout_batch['actions'])
+        calibrated_thresh = jnp.mean(disc) + self.config['morel_thresh_std_mult'] * jnp.std(disc)
+        usad_thresh = jnp.where(
+            self.config['auto_calibrate_thresh'], calibrated_thresh, self.config['morel_thresh']
+        )
+
+        _, model_info = self.model_loss(holdout_batch, None, self.rng)
+        info = {f'holdout/{k}': v for k, v in model_info.items()}
+        info['holdout/elite_mse'] = member_mse[elites].mean()
+        info['holdout/usad_thresh'] = usad_thresh
+        return self.replace(elites=elites, usad_thresh=usad_thresh), info
+
+    def sample_reverse_dynamics(self, next_observations, actions, seed):
+        """Sample predecessor states s_t from a uniformly chosen elite reverse dynamics member."""
+        dyn_rng, member_rng = jax.random.split(seed)
+        prev_obs = self.model.select('reverse_dynamics')(next_observations, actions).sample(seed=dyn_rng)
+        member = self.elites[jax.random.randint(member_rng, (prev_obs.shape[1],), 0, self.elites.shape[0])]
+        return prev_obs[member, jnp.arange(prev_obs.shape[1])]
+
+    # ------------------------------------------------------------------ #
+    # Step 2: Dataset-Anchored USAD-Truncated Reverse Rollouts
+    # ------------------------------------------------------------------ #
+
+    @jax.jit
+    def rollout(self, batch, rng):
+        """Perform dataset-anchored reverse rollouts with USAD truncation (Reverse-MoREL)."""
+        H = self.config['rollout_steps']
+        # Anchor step 0 on real dataset states s_anchor in D_real
+        anchor_ob = batch['next_observations']
+        batch_size = anchor_ob.shape[0]
+        value_goals = batch['value_goals'] if 'value_goals' in batch else None
+
+        def reverse_rollout_step(carry, _):
+            cur_next_ob, alive, halted, rng = carry
+            rng, action_rng, dyn_rng = jax.random.split(rng, 3)
+
+            rev_act_dist = self.model.select('reverse_actor')(cur_next_ob, goals=value_goals)
+            rev_action = jnp.clip(rev_act_dist.sample(seed=action_rng), -1.0, 1.0)
+            raw_prev_ob = self.sample_reverse_dynamics(cur_next_ob, rev_action, dyn_rng)
+
+            disc = self.compute_discrepancy(cur_next_ob, rev_action)
+            unknown = (disc > self.usad_thresh).astype(jnp.float32)
+            new_halted = jnp.maximum(halted, unknown)
+
+            prev_ob = jnp.where(new_halted[:, None] > 0.5, cur_next_ob, raw_prev_ob)
+            succ_logit = self.model.select('success')(prev_ob, value_goals, rev_action)
+            success = (jax.nn.sigmoid(succ_logit) > 0.5).astype(jnp.float32)
+            if value_goals is not None:
+                step_rewards = success - (1.0 if self.config['gc_negative'] else 0.0)
+            else:
+                step_rewards = self.model.select('reward')(prev_ob, None, rev_action)
+
+            # In Reverse-MoREL, any step that triggers USAD=1 stops the backward chain (rollout_valid = 0.0),
+            # while all earlier surviving steps 1..k_trunc keep masks = 1.0 - success and chain into cur_next_ob!
+            rollout_valid = alive * (1.0 - new_halted)
+            masks = 1.0 - success
+            next_alive = rollout_valid
+
+            return (prev_ob, next_alive, new_halted, rng), {
+                'observations': prev_ob,
+                'actions': rev_action,
+                'next_observations': cur_next_ob,
+                'rewards': step_rewards,
+                'masks': masks,
+                'rollout_valid': rollout_valid,
+            }
+
+        init_carry = (
+            anchor_ob,
+            jnp.ones((batch_size,), dtype=jnp.float32),
+            jnp.zeros((batch_size,), dtype=jnp.float32),
+            rng,
+        )
+        _, rollout_data = jax.lax.scan(reverse_rollout_step, init_carry, None, length=H)
+
+        if value_goals is not None:
+            rollout_data['value_goals'] = jnp.repeat(batch['value_goals'][None], H, axis=0)
+            rollout_data['actor_goals'] = jnp.repeat(batch['actor_goals'][None], H, axis=0)
+
+        return {k: v.reshape((H * batch_size,) + v.shape[2:]) for k, v in rollout_data.items()}
+
+    # ------------------------------------------------------------------ #
+    # Step 3: Policy optimization on Real + Anchored Reverse Rollouts
+    # ------------------------------------------------------------------ #
+
+    def preprocess(self, real_batch, fake_batch):
+        batch = {
+            'observations': jnp.concatenate([real_batch['observations'], fake_batch['observations']], axis=0),
+            'actions': jnp.concatenate([real_batch['actions'], fake_batch['actions']], axis=0),
+            'next_observations': jnp.concatenate(
+                [real_batch['next_observations'], fake_batch['next_observations']], axis=0
+            ),
+            'rewards': jnp.concatenate([real_batch['rewards'], fake_batch['rewards']], axis=0),
+            'masks': jnp.concatenate([real_batch['masks'], fake_batch['masks']], axis=0),
+        }
+        if 'value_goals' not in real_batch or real_batch['value_goals'] is None:
+            batch['value_goals'] = None
+            batch['actor_goals'] = None
+        else:
+            batch['value_goals'] = jnp.concatenate([real_batch['value_goals'], fake_batch['value_goals']], axis=0)
+            batch['actor_goals'] = jnp.concatenate([real_batch['actor_goals'], fake_batch['actor_goals']], axis=0)
+        return batch
+
+    def critic_loss(self, batch, grad_params, rng):
+        rng, sample_rng = jax.random.split(rng)
+        next_dist = self.network.select('actor')(batch['next_observations'], goals=batch['value_goals'])
+        next_actions, _ = next_dist.sample_and_log_prob(seed=sample_rng)
+
+        next_qs = self.network.select('target_critic')(
+            batch['next_observations'], goals=batch['value_goals'], actions=next_actions
+        )
+        next_q = next_qs.min(axis=0) if self.config['q_agg'] == 'min' else next_qs.mean(axis=0)
+        target_q = batch['rewards'] + self.config['discount'] * batch['masks'] * next_q
+
+        if batch['value_goals'] is not None:
+            if self.config['gc_negative']:
+                target_q = jnp.clip(target_q, -1 / (1 - self.config['discount']), 0)
+            else:
+                target_q = jnp.clip(target_q, 0, 1)
+
+        q = self.network.select('critic')(
+            batch['observations'], goals=batch['value_goals'], actions=batch['actions'], params=grad_params
+        )
+        critic_loss = jnp.square(q - sg(target_q)).mean()
+        return critic_loss, {
+            'critic_loss': critic_loss,
+            'q_mean': q.mean(),
+            'q_max': q.max(),
+            'q_min': q.min(),
+        }
+
+    def actor_loss(self, batch, grad_params, rng):
+        dist = self.network.select('actor')(batch['observations'], goals=batch['actor_goals'], params=grad_params)
+        actions, log_probs = dist.sample_and_log_prob(seed=rng)
+
+        qs = self.network.select('critic')(batch['observations'], batch['actor_goals'], actions)
+        q = jnp.mean(qs, axis=0)
+        actor_loss = (log_probs * self.network.select('lam')() - q).mean()
+
+        lam = self.network.select('lam')(params=grad_params)
+        entropy = -sg(log_probs).mean()
+        lam_loss = (lam * (entropy - self.config['target_entropy'])).mean()
+
+        total_loss = actor_loss + lam_loss
+        action_std = dist._distribution.stddev().mean() if self.config['tanh_squash'] else dist.stddev().mean()
+        return total_loss, {
+            'total_loss': total_loss,
+            'actor_loss': actor_loss,
+            'lam_loss': lam_loss,
+            'lam': lam,
+            'entropy': entropy,
+            'std': action_std,
+            'q': q.mean(),
+        }
+
+    @jax.jit
+    def total_loss(self, real_batch, fake_batch, grad_params, rng=None):
+        info = {}
+        rng = rng if rng is not None else self.rng
+        actor_rng, critic_rng = jax.random.split(rng)
+
+        batch = self.preprocess(real_batch, fake_batch)
+        critic_loss, critic_info = self.critic_loss(batch, grad_params, critic_rng)
+        info.update({f'critic/{k}': v for k, v in critic_info.items()})
+
+        actor_loss, actor_info = self.actor_loss(batch, grad_params, actor_rng)
+        info.update({f'actor/{k}': v for k, v in actor_info.items()})
+
+        return critic_loss + actor_loss, info
+
+    def target_update(self, network, module_name):
+        new_target_params = jax.tree_util.tree_map(
+            lambda p, tp: p * self.config['tau'] + tp * (1 - self.config['tau']),
+            self.network.params[f'modules_{module_name}'],
+            self.network.params[f'modules_target_{module_name}'],
+        )
+        network.params[f'modules_target_{module_name}'] = new_target_params
+
+    @jax.jit
+    def update(self, real_batch, fake_batch):
+        new_rng, rng = jax.random.split(self.rng)
+
+        def loss_fn(grad_params):
+            return self.total_loss(real_batch, fake_batch, grad_params, rng=rng)
+
+        new_network, info = self.network.apply_loss_fn(loss_fn=loss_fn)
+        self.target_update(new_network, 'critic')
+        return self.replace(network=new_network, rng=new_rng), info
+
+    @jax.jit
+    def compute_metrics(self, real_batch, fake_batch, rng=None):
+        goals = real_batch['actor_goals'] if 'actor_goals' in real_batch else None
+        actions, _ = self.sample_actions(real_batch['observations'], goals, seed=rng, mode='train')
+        return {'mse': jnp.mean((actions - real_batch['actions']) ** 2)}
+
+    @partial(jax.jit, static_argnames=['mode'])
+    def sample_actions(self, observations, goals=None, seed=None, temperature=1.0, mode='test'):
+        dist = self.network.select('actor')(observations, goals, temperature=temperature)
+        actions = jnp.clip(dist.sample(seed=seed), -1, 1)
+        return actions, {}
+
+    @classmethod
+    def create(cls, seed, example_batch, config):
+        rng = jax.random.PRNGKey(seed)
+        rng, init_rng, model_rng = jax.random.split(rng, 3)
+
+        ex_observations = example_batch['observations']
+        ex_actions = example_batch['actions']
+        ex_goals = example_batch['actor_goals'] if 'actor_goals' in example_batch else None
+        ob_dim = ex_observations.shape[-1]
+        action_dim = ex_actions.shape[-1]
+
+        if config['target_entropy'] is None:
+            config['target_entropy'] = -config['target_entropy_multiplier'] * action_dim
+
+        critic_def = GCValue(
+            hidden_dims=config['value_hidden_dims'],
+            layer_norm=config['layer_norm'],
+            num_ensembles=config['num_qs'],
+        )
+        actor_def = GCActor(
+            hidden_dims=config['actor_hidden_dims'],
+            action_dim=action_dim,
+            layer_norm=config['layer_norm'],
+            tanh_squash=config['tanh_squash'],
+            state_dependent_std=config['state_dependent_std'],
+            const_std=False,
+            final_fc_init_scale=config['actor_fc_scale'],
+        )
+        network_info = dict(
+            critic=(critic_def, (ex_observations, ex_goals, ex_actions)),
+            target_critic=(copy.deepcopy(critic_def), (ex_observations, ex_goals, ex_actions)),
+            actor=(actor_def, (ex_observations, ex_goals)),
+            lam=(LogParam(), ()),
+        )
+        network_def = ModuleDict({k: v[0] for k, v in network_info.items()})
+        network_params = network_def.init(init_rng, **{k: v[1] for k, v in network_info.items()})['params']
+        network_params['modules_target_critic'] = network_params['modules_critic']
+        network = TrainState.create(network_def, network_params, tx=optax.adam(learning_rate=config['lr']))
+
+        reverse_dynamics_def = Dynamics(
+            hidden_dims=config['dynamics_hidden_dims'],
+            output_dim=ob_dim,
+            layer_norm=config['layer_norm'],
+            num_ensembles=config['num_dynamics'],
+            stochastic=True,
+        )
+        reverse_actor_def = GCActor(
+            hidden_dims=config['actor_hidden_dims'],
+            action_dim=action_dim,
+            layer_norm=config['layer_norm'],
+            tanh_squash=False,
+            state_dependent_std=config['state_dependent_std'],
+            const_std=False,
+            final_fc_init_scale=config['actor_fc_scale'],
+        )
+        success_def = GCValue(
+            hidden_dims=config['dynamics_hidden_dims'],
+            layer_norm=config['layer_norm'],
+            num_ensembles=1,
+        )
+        reward_def = GCValue(
+            hidden_dims=config['dynamics_hidden_dims'],
+            layer_norm=config['layer_norm'],
+            num_ensembles=1,
+        )
+        model_info = dict(
+            reverse_dynamics=(reverse_dynamics_def, (ex_observations, ex_actions)),
+            reverse_actor=(reverse_actor_def, (ex_observations, ex_goals)),
+            success=(success_def, (ex_observations, ex_goals, ex_actions)),
+            reward=(reward_def, (ex_observations, ex_goals, ex_actions)),
+        )
+        model_def = ModuleDict({k: v[0] for k, v in model_info.items()})
+        model_params = model_def.init(model_rng, **{k: v[1] for k, v in model_info.items()})['params']
+        model = TrainState.create(model_def, model_params, tx=optax.adam(learning_rate=config['lr']))
+
+        elites = jnp.arange(config['num_elites'], dtype=jnp.int32)
+        usad_thresh = jnp.asarray(config['morel_thresh'], dtype=jnp.float32)
+
+        config['ob_dim'] = ob_dim
+        config['action_dim'] = action_dim
+        return cls(
+            rng,
+            network=network,
+            model=model,
+            elites=elites,
+            usad_thresh=usad_thresh,
+            config=flax.core.FrozenDict(**config),
+        )
+
+
+def get_config():
+    config = get_mopo_config()
+    config.agent_name = 'reverse_morel'
+    config.beta = 0.0
+    config.num_elites = 5
+    config.model_train_steps = 100000
+    config.model_holdout_size = 1000
+    config.morel_thresh = 0.5
+    config.morel_thresh_std_mult = 1.5
+    config.auto_calibrate_thresh = True
+    config.dataset_class = 'CDataset'
+    return config
