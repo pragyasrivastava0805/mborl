@@ -77,7 +77,7 @@ class Dataset(FrozenDict):
 
     def get_subset(self, idxs):
         """Return a subset of the dataset given the indices."""
-        result = jax.tree_util.tree_map(lambda arr: arr[idxs], self._dict)
+        result = dict(jax.tree_util.tree_map(lambda arr: arr[idxs], self._dict))
         if 'next_observations' not in result:
             result['next_observations'] = self._dict['observations'][np.minimum(idxs + 1, self.size - 1)]
         if 'next_actions' not in result and 'actions' in self._dict:
