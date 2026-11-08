@@ -13,7 +13,7 @@
     "antmaze-large-stitch-v0",
     "humanoidmaze-medium-stitch-v0"
   ],
-  "total_seed_runs": 300,
+  "total_seed_runs": 325,
   "baselines": {
     "mbpo": {
       "family": "Model-Based Forward",
@@ -140,6 +140,69 @@
       },
       "five_env_mean": 20.0,
       "five_env_mean_std": 0.0
+    },
+    "morel": {
+      "family": "Model-Based Forward",
+      "module": "agents/morel.py",
+      "environments": {
+        "pointmaze-medium-stitch-v0": {
+          "seeds": [
+            90.0,
+            95.0,
+            95.0,
+            90.0,
+            90.0
+          ],
+          "mean": 92.0,
+          "std": 2.45
+        },
+        "pointmaze-large-stitch-v0": {
+          "seeds": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "mean": 0.0,
+          "std": 0.0
+        },
+        "antmaze-medium-stitch-v0": {
+          "seeds": [
+            15.0,
+            0.0,
+            15.0,
+            10.0,
+            10.0
+          ],
+          "mean": 10.0,
+          "std": 5.48
+        },
+        "antmaze-large-stitch-v0": {
+          "seeds": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "mean": 0.0,
+          "std": 0.0
+        },
+        "humanoidmaze-medium-stitch-v0": {
+          "seeds": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "mean": 0.0,
+          "std": 0.0
+        }
+      },
+      "five_env_mean": 20.4,
+      "five_env_mean_std": 1.02
     },
     "combo": {
       "family": "Model-Based Forward",

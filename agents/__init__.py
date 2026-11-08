@@ -12,6 +12,7 @@ from agents.hiql import HIQLAgent
 # Baselines (Model-based)
 from agents.mbpo import MBPOAgent
 from agents.mopo import MOPOAgent
+from agents.morel import MOReLAgent
 from agents.combo import COMBOAgent
 from agents.fmpc import FMPCAgent
 from agents.leq import LEQAgent
@@ -36,6 +37,7 @@ agents = dict(
 
     mbpo=MBPOAgent,
     mopo=MOPOAgent,
+    morel=MOReLAgent,
     combo=COMBOAgent,
     fmpc=FMPCAgent,
     leq=LEQAgent,
