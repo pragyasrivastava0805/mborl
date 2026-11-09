@@ -1,0 +1,376 @@
+baseline,family,module,environment,task,seed0,seed1,seed2,seed3,seed4,mean,std
+mbpo,Model-Based Forward,agents/mbpo.py,pointmaze-medium-stitch-v0,task1,100.0,100.0,20.0,100.0,100.0,84.00,32.00
+mbpo,Model-Based Forward,agents/mbpo.py,pointmaze-medium-stitch-v0,task2,35.0,30.0,55.0,60.0,30.0,42.00,12.88
+mbpo,Model-Based Forward,agents/mbpo.py,pointmaze-medium-stitch-v0,task3,65.0,80.0,50.0,65.0,50.0,62.00,11.22
+mbpo,Model-Based Forward,agents/mbpo.py,pointmaze-medium-stitch-v0,task4,55.0,35.0,55.0,80.0,45.0,54.00,14.97
+mbpo,Model-Based Forward,agents/mbpo.py,pointmaze-medium-stitch-v0,task5,35.0,85.0,40.0,35.0,65.0,52.00,19.90
+mbpo,Model-Based Forward,agents/mbpo.py,pointmaze-large-stitch-v0,task1,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+mbpo,Model-Based Forward,agents/mbpo.py,pointmaze-large-stitch-v0,task2,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+mbpo,Model-Based Forward,agents/mbpo.py,pointmaze-large-stitch-v0,task3,20.0,60.0,20.0,45.0,45.0,38.00,15.68
+mbpo,Model-Based Forward,agents/mbpo.py,pointmaze-large-stitch-v0,task4,40.0,30.0,10.0,35.0,40.0,31.00,11.14
+mbpo,Model-Based Forward,agents/mbpo.py,pointmaze-large-stitch-v0,task5,0.0,5.0,5.0,15.0,10.0,7.00,5.10
+mbpo,Model-Based Forward,agents/mbpo.py,antmaze-medium-stitch-v0,task1,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+mbpo,Model-Based Forward,agents/mbpo.py,antmaze-medium-stitch-v0,task2,25.0,10.0,5.0,0.0,0.0,8.00,9.27
+mbpo,Model-Based Forward,agents/mbpo.py,antmaze-medium-stitch-v0,task3,20.0,20.0,20.0,25.0,15.0,20.00,3.16
+mbpo,Model-Based Forward,agents/mbpo.py,antmaze-medium-stitch-v0,task4,0.0,20.0,5.0,0.0,5.0,6.00,7.35
+mbpo,Model-Based Forward,agents/mbpo.py,antmaze-medium-stitch-v0,task5,0.0,5.0,10.0,20.0,20.0,11.00,8.00
+mbpo,Model-Based Forward,agents/mbpo.py,antmaze-large-stitch-v0,task1,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+mbpo,Model-Based Forward,agents/mbpo.py,antmaze-large-stitch-v0,task2,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+mbpo,Model-Based Forward,agents/mbpo.py,antmaze-large-stitch-v0,task3,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+mbpo,Model-Based Forward,agents/mbpo.py,antmaze-large-stitch-v0,task4,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+mbpo,Model-Based Forward,agents/mbpo.py,antmaze-large-stitch-v0,task5,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+mbpo,Model-Based Forward,agents/mbpo.py,humanoidmaze-medium-stitch-v0,task1,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+mbpo,Model-Based Forward,agents/mbpo.py,humanoidmaze-medium-stitch-v0,task2,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+mbpo,Model-Based Forward,agents/mbpo.py,humanoidmaze-medium-stitch-v0,task3,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+mbpo,Model-Based Forward,agents/mbpo.py,humanoidmaze-medium-stitch-v0,task4,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+mbpo,Model-Based Forward,agents/mbpo.py,humanoidmaze-medium-stitch-v0,task5,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+mopo,Model-Based Forward,agents/mopo.py,pointmaze-medium-stitch-v0,task1,100.0,100.0,100.0,100.0,100.0,100.00,0.00
+mopo,Model-Based Forward,agents/mopo.py,pointmaze-medium-stitch-v0,task2,45.0,25.0,55.0,40.0,45.0,42.00,9.80
+mopo,Model-Based Forward,agents/mopo.py,pointmaze-medium-stitch-v0,task3,70.0,85.0,45.0,60.0,55.0,63.00,13.64
+mopo,Model-Based Forward,agents/mopo.py,pointmaze-medium-stitch-v0,task4,70.0,30.0,45.0,40.0,30.0,43.00,14.70
+mopo,Model-Based Forward,agents/mopo.py,pointmaze-medium-stitch-v0,task5,50.0,80.0,35.0,30.0,55.0,50.00,17.61
+mopo,Model-Based Forward,agents/mopo.py,pointmaze-large-stitch-v0,task1,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+mopo,Model-Based Forward,agents/mopo.py,pointmaze-large-stitch-v0,task2,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+mopo,Model-Based Forward,agents/mopo.py,pointmaze-large-stitch-v0,task3,30.0,55.0,50.0,20.0,25.0,36.00,13.93
+mopo,Model-Based Forward,agents/mopo.py,pointmaze-large-stitch-v0,task4,15.0,25.0,30.0,15.0,55.0,28.00,14.70
+mopo,Model-Based Forward,agents/mopo.py,pointmaze-large-stitch-v0,task5,10.0,5.0,15.0,15.0,10.0,11.00,3.74
+mopo,Model-Based Forward,agents/mopo.py,antmaze-medium-stitch-v0,task1,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+mopo,Model-Based Forward,agents/mopo.py,antmaze-medium-stitch-v0,task2,0.0,10.0,0.0,10.0,0.0,4.00,4.90
+mopo,Model-Based Forward,agents/mopo.py,antmaze-medium-stitch-v0,task3,15.0,15.0,10.0,30.0,20.0,18.00,6.78
+mopo,Model-Based Forward,agents/mopo.py,antmaze-medium-stitch-v0,task4,0.0,5.0,5.0,0.0,0.0,2.00,2.45
+mopo,Model-Based Forward,agents/mopo.py,antmaze-medium-stitch-v0,task5,0.0,10.0,5.0,10.0,5.0,6.00,3.74
+mopo,Model-Based Forward,agents/mopo.py,antmaze-large-stitch-v0,task1,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+mopo,Model-Based Forward,agents/mopo.py,antmaze-large-stitch-v0,task2,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+mopo,Model-Based Forward,agents/mopo.py,antmaze-large-stitch-v0,task3,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+mopo,Model-Based Forward,agents/mopo.py,antmaze-large-stitch-v0,task4,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+mopo,Model-Based Forward,agents/mopo.py,antmaze-large-stitch-v0,task5,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+mopo,Model-Based Forward,agents/mopo.py,humanoidmaze-medium-stitch-v0,task1,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+mopo,Model-Based Forward,agents/mopo.py,humanoidmaze-medium-stitch-v0,task2,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+mopo,Model-Based Forward,agents/mopo.py,humanoidmaze-medium-stitch-v0,task3,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+mopo,Model-Based Forward,agents/mopo.py,humanoidmaze-medium-stitch-v0,task4,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+mopo,Model-Based Forward,agents/mopo.py,humanoidmaze-medium-stitch-v0,task5,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+morel,Model-Based Forward,agents/morel.py,pointmaze-medium-stitch-v0,task1,90.0,95.0,95.0,90.0,90.0,92.00,2.45
+morel,Model-Based Forward,agents/morel.py,pointmaze-medium-stitch-v0,task2,55.0,35.0,65.0,25.0,50.0,46.00,14.28
+morel,Model-Based Forward,agents/morel.py,pointmaze-medium-stitch-v0,task3,75.0,85.0,85.0,75.0,55.0,75.00,10.95
+morel,Model-Based Forward,agents/morel.py,pointmaze-medium-stitch-v0,task4,85.0,55.0,55.0,70.0,60.0,65.00,11.40
+morel,Model-Based Forward,agents/morel.py,pointmaze-medium-stitch-v0,task5,70.0,90.0,35.0,50.0,65.0,62.00,18.60
+morel,Model-Based Forward,agents/morel.py,pointmaze-large-stitch-v0,task1,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+morel,Model-Based Forward,agents/morel.py,pointmaze-large-stitch-v0,task2,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+morel,Model-Based Forward,agents/morel.py,pointmaze-large-stitch-v0,task3,45.0,20.0,40.0,45.0,20.0,34.00,11.58
+morel,Model-Based Forward,agents/morel.py,pointmaze-large-stitch-v0,task4,20.0,30.0,20.0,40.0,55.0,33.00,13.27
+morel,Model-Based Forward,agents/morel.py,pointmaze-large-stitch-v0,task5,25.0,5.0,10.0,20.0,20.0,16.00,7.35
+morel,Model-Based Forward,agents/morel.py,antmaze-medium-stitch-v0,task1,15.0,0.0,15.0,10.0,10.0,10.00,5.48
+morel,Model-Based Forward,agents/morel.py,antmaze-medium-stitch-v0,task2,20.0,10.0,10.0,15.0,0.0,11.00,6.63
+morel,Model-Based Forward,agents/morel.py,antmaze-medium-stitch-v0,task3,25.0,30.0,20.0,55.0,40.0,34.00,12.41
+morel,Model-Based Forward,agents/morel.py,antmaze-medium-stitch-v0,task4,0.0,10.0,10.0,0.0,20.0,8.00,7.48
+morel,Model-Based Forward,agents/morel.py,antmaze-medium-stitch-v0,task5,5.0,20.0,15.0,15.0,20.0,15.00,5.48
+morel,Model-Based Forward,agents/morel.py,antmaze-large-stitch-v0,task1,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+morel,Model-Based Forward,agents/morel.py,antmaze-large-stitch-v0,task2,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+morel,Model-Based Forward,agents/morel.py,antmaze-large-stitch-v0,task3,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+morel,Model-Based Forward,agents/morel.py,antmaze-large-stitch-v0,task4,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+morel,Model-Based Forward,agents/morel.py,antmaze-large-stitch-v0,task5,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+morel,Model-Based Forward,agents/morel.py,humanoidmaze-medium-stitch-v0,task1,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+morel,Model-Based Forward,agents/morel.py,humanoidmaze-medium-stitch-v0,task2,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+morel,Model-Based Forward,agents/morel.py,humanoidmaze-medium-stitch-v0,task3,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+morel,Model-Based Forward,agents/morel.py,humanoidmaze-medium-stitch-v0,task4,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+morel,Model-Based Forward,agents/morel.py,humanoidmaze-medium-stitch-v0,task5,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+reverse_morel,"Model-Based Reverse (USAD-Truncated, Dataset-Anchored)",agents/reverse_morel.py,pointmaze-medium-stitch-v0,task1,100.0,100.0,100.0,100.0,100.0,100.00,0.00
+reverse_morel,"Model-Based Reverse (USAD-Truncated, Dataset-Anchored)",agents/reverse_morel.py,pointmaze-medium-stitch-v0,task2,100.0,100.0,100.0,100.0,100.0,100.00,0.00
+reverse_morel,"Model-Based Reverse (USAD-Truncated, Dataset-Anchored)",agents/reverse_morel.py,pointmaze-medium-stitch-v0,task3,100.0,100.0,100.0,100.0,100.0,100.00,0.00
+reverse_morel,"Model-Based Reverse (USAD-Truncated, Dataset-Anchored)",agents/reverse_morel.py,pointmaze-medium-stitch-v0,task4,100.0,100.0,100.0,100.0,100.0,100.00,0.00
+reverse_morel,"Model-Based Reverse (USAD-Truncated, Dataset-Anchored)",agents/reverse_morel.py,pointmaze-medium-stitch-v0,task5,100.0,100.0,100.0,100.0,100.0,100.00,0.00
+reverse_morel,"Model-Based Reverse (USAD-Truncated, Dataset-Anchored)",agents/reverse_morel.py,pointmaze-large-stitch-v0,task1,85.0,80.0,85.0,75.0,85.0,82.00,4.00
+reverse_morel,"Model-Based Reverse (USAD-Truncated, Dataset-Anchored)",agents/reverse_morel.py,pointmaze-large-stitch-v0,task2,100.0,100.0,100.0,100.0,100.0,100.00,0.00
+reverse_morel,"Model-Based Reverse (USAD-Truncated, Dataset-Anchored)",agents/reverse_morel.py,pointmaze-large-stitch-v0,task3,100.0,100.0,100.0,100.0,100.0,100.00,0.00
+reverse_morel,"Model-Based Reverse (USAD-Truncated, Dataset-Anchored)",agents/reverse_morel.py,pointmaze-large-stitch-v0,task4,100.0,100.0,100.0,100.0,100.0,100.00,0.00
+reverse_morel,"Model-Based Reverse (USAD-Truncated, Dataset-Anchored)",agents/reverse_morel.py,pointmaze-large-stitch-v0,task5,95.0,100.0,100.0,100.0,95.0,98.00,2.45
+reverse_morel,"Model-Based Reverse (USAD-Truncated, Dataset-Anchored)",agents/reverse_morel.py,antmaze-medium-stitch-v0,task1,25.0,30.0,40.0,30.0,50.0,35.00,8.94
+reverse_morel,"Model-Based Reverse (USAD-Truncated, Dataset-Anchored)",agents/reverse_morel.py,antmaze-medium-stitch-v0,task2,60.0,55.0,50.0,60.0,50.0,55.00,4.47
+reverse_morel,"Model-Based Reverse (USAD-Truncated, Dataset-Anchored)",agents/reverse_morel.py,antmaze-medium-stitch-v0,task3,65.0,50.0,75.0,60.0,65.0,63.00,8.12
+reverse_morel,"Model-Based Reverse (USAD-Truncated, Dataset-Anchored)",agents/reverse_morel.py,antmaze-medium-stitch-v0,task4,45.0,30.0,40.0,55.0,30.0,40.00,9.49
+reverse_morel,"Model-Based Reverse (USAD-Truncated, Dataset-Anchored)",agents/reverse_morel.py,antmaze-medium-stitch-v0,task5,60.0,45.0,55.0,60.0,55.0,55.00,5.48
+reverse_morel,"Model-Based Reverse (USAD-Truncated, Dataset-Anchored)",agents/reverse_morel.py,antmaze-large-stitch-v0,task1,5.0,20.0,5.0,10.0,20.0,12.00,6.78
+reverse_morel,"Model-Based Reverse (USAD-Truncated, Dataset-Anchored)",agents/reverse_morel.py,antmaze-large-stitch-v0,task2,0.0,5.0,10.0,10.0,5.0,6.00,3.74
+reverse_morel,"Model-Based Reverse (USAD-Truncated, Dataset-Anchored)",agents/reverse_morel.py,antmaze-large-stitch-v0,task3,25.0,25.0,55.0,50.0,40.0,39.00,12.41
+reverse_morel,"Model-Based Reverse (USAD-Truncated, Dataset-Anchored)",agents/reverse_morel.py,antmaze-large-stitch-v0,task4,40.0,20.0,20.0,10.0,30.0,24.00,10.20
+reverse_morel,"Model-Based Reverse (USAD-Truncated, Dataset-Anchored)",agents/reverse_morel.py,antmaze-large-stitch-v0,task5,25.0,5.0,35.0,10.0,5.0,16.00,12.00
+reverse_morel,"Model-Based Reverse (USAD-Truncated, Dataset-Anchored)",agents/reverse_morel.py,humanoidmaze-medium-stitch-v0,task1,0.0,10.0,5.0,10.0,25.0,10.00,8.37
+reverse_morel,"Model-Based Reverse (USAD-Truncated, Dataset-Anchored)",agents/reverse_morel.py,humanoidmaze-medium-stitch-v0,task2,20.0,15.0,5.0,0.0,20.0,12.00,8.12
+reverse_morel,"Model-Based Reverse (USAD-Truncated, Dataset-Anchored)",agents/reverse_morel.py,humanoidmaze-medium-stitch-v0,task3,25.0,10.0,15.0,15.0,15.0,16.00,4.90
+reverse_morel,"Model-Based Reverse (USAD-Truncated, Dataset-Anchored)",agents/reverse_morel.py,humanoidmaze-medium-stitch-v0,task4,5.0,0.0,0.0,5.0,35.0,9.00,13.19
+reverse_morel,"Model-Based Reverse (USAD-Truncated, Dataset-Anchored)",agents/reverse_morel.py,humanoidmaze-medium-stitch-v0,task5,10.0,15.0,5.0,15.0,10.0,11.00,3.74
+reverse_morel_anchor_bootstrap,model-based,agents/reverse_morel_anchor_bootstrap.py,pointmaze-medium-stitch-v0,task1,100.0,100.0,100.0,100.0,100.0,100.00,0.00
+reverse_morel_anchor_bootstrap,model-based,agents/reverse_morel_anchor_bootstrap.py,pointmaze-medium-stitch-v0,task2,100.0,100.0,100.0,100.0,100.0,100.00,0.00
+reverse_morel_anchor_bootstrap,model-based,agents/reverse_morel_anchor_bootstrap.py,pointmaze-medium-stitch-v0,task3,100.0,100.0,100.0,100.0,100.0,100.00,0.00
+reverse_morel_anchor_bootstrap,model-based,agents/reverse_morel_anchor_bootstrap.py,pointmaze-medium-stitch-v0,task4,100.0,100.0,100.0,100.0,100.0,100.00,0.00
+reverse_morel_anchor_bootstrap,model-based,agents/reverse_morel_anchor_bootstrap.py,pointmaze-medium-stitch-v0,task5,95.0,100.0,100.0,100.0,100.0,99.00,2.00
+reverse_morel_anchor_bootstrap,model-based,agents/reverse_morel_anchor_bootstrap.py,pointmaze-large-stitch-v0,task1,100.0,100.0,95.0,100.0,100.0,99.00,2.00
+reverse_morel_anchor_bootstrap,model-based,agents/reverse_morel_anchor_bootstrap.py,pointmaze-large-stitch-v0,task2,100.0,100.0,100.0,100.0,100.0,100.00,0.00
+reverse_morel_anchor_bootstrap,model-based,agents/reverse_morel_anchor_bootstrap.py,pointmaze-large-stitch-v0,task3,100.0,100.0,100.0,100.0,100.0,100.00,0.00
+reverse_morel_anchor_bootstrap,model-based,agents/reverse_morel_anchor_bootstrap.py,pointmaze-large-stitch-v0,task4,100.0,100.0,100.0,100.0,100.0,100.00,0.00
+reverse_morel_anchor_bootstrap,model-based,agents/reverse_morel_anchor_bootstrap.py,pointmaze-large-stitch-v0,task5,100.0,100.0,100.0,100.0,100.0,100.00,0.00
+reverse_morel_anchor_bootstrap,model-based,agents/reverse_morel_anchor_bootstrap.py,antmaze-medium-stitch-v0,task1,45.0,30.0,70.0,50.0,70.0,53.00,15.36
+reverse_morel_anchor_bootstrap,model-based,agents/reverse_morel_anchor_bootstrap.py,antmaze-medium-stitch-v0,task2,60.0,70.0,30.0,45.0,60.0,53.00,14.00
+reverse_morel_anchor_bootstrap,model-based,agents/reverse_morel_anchor_bootstrap.py,antmaze-medium-stitch-v0,task3,65.0,70.0,90.0,65.0,60.0,70.00,10.49
+reverse_morel_anchor_bootstrap,model-based,agents/reverse_morel_anchor_bootstrap.py,antmaze-medium-stitch-v0,task4,45.0,70.0,50.0,70.0,80.0,63.00,13.27
+reverse_morel_anchor_bootstrap,model-based,agents/reverse_morel_anchor_bootstrap.py,antmaze-medium-stitch-v0,task5,80.0,80.0,60.0,80.0,65.0,73.00,8.72
+reverse_morel_anchor_bootstrap,model-based,agents/reverse_morel_anchor_bootstrap.py,antmaze-large-stitch-v0,task1,25.0,20.0,35.0,25.0,20.0,25.00,5.48
+reverse_morel_anchor_bootstrap,model-based,agents/reverse_morel_anchor_bootstrap.py,antmaze-large-stitch-v0,task2,30.0,10.0,25.0,30.0,5.0,20.00,10.49
+reverse_morel_anchor_bootstrap,model-based,agents/reverse_morel_anchor_bootstrap.py,antmaze-large-stitch-v0,task3,40.0,50.0,20.0,55.0,50.0,43.00,12.49
+reverse_morel_anchor_bootstrap,model-based,agents/reverse_morel_anchor_bootstrap.py,antmaze-large-stitch-v0,task4,50.0,70.0,25.0,35.0,40.0,44.00,15.30
+reverse_morel_anchor_bootstrap,model-based,agents/reverse_morel_anchor_bootstrap.py,antmaze-large-stitch-v0,task5,30.0,35.0,25.0,25.0,25.0,28.00,4.00
+reverse_morel_anchor_bootstrap,model-based,agents/reverse_morel_anchor_bootstrap.py,humanoidmaze-medium-stitch-v0,task1,10.0,25.0,15.0,5.0,20.0,15.00,7.07
+reverse_morel_anchor_bootstrap,model-based,agents/reverse_morel_anchor_bootstrap.py,humanoidmaze-medium-stitch-v0,task2,25.0,30.0,10.0,0.0,25.0,18.00,11.22
+reverse_morel_anchor_bootstrap,model-based,agents/reverse_morel_anchor_bootstrap.py,humanoidmaze-medium-stitch-v0,task3,30.0,10.0,35.0,25.0,35.0,27.00,9.27
+reverse_morel_anchor_bootstrap,model-based,agents/reverse_morel_anchor_bootstrap.py,humanoidmaze-medium-stitch-v0,task4,20.0,10.0,5.0,30.0,15.0,16.00,8.60
+reverse_morel_anchor_bootstrap,model-based,agents/reverse_morel_anchor_bootstrap.py,humanoidmaze-medium-stitch-v0,task5,40.0,30.0,10.0,35.0,45.0,32.00,12.08
+combo,Model-Based Forward,agents/combo.py,pointmaze-medium-stitch-v0,task1,60.0,10.0,95.0,30.0,100.0,59.00,35.27
+combo,Model-Based Forward,agents/combo.py,pointmaze-medium-stitch-v0,task2,35.0,20.0,45.0,25.0,35.0,32.00,8.72
+combo,Model-Based Forward,agents/combo.py,pointmaze-medium-stitch-v0,task3,65.0,75.0,40.0,45.0,35.0,52.00,15.36
+combo,Model-Based Forward,agents/combo.py,pointmaze-medium-stitch-v0,task4,25.0,35.0,30.0,40.0,30.0,32.00,5.10
+combo,Model-Based Forward,agents/combo.py,pointmaze-medium-stitch-v0,task5,30.0,60.0,35.0,30.0,60.0,43.00,14.00
+combo,Model-Based Forward,agents/combo.py,pointmaze-large-stitch-v0,task1,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+combo,Model-Based Forward,agents/combo.py,pointmaze-large-stitch-v0,task2,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+combo,Model-Based Forward,agents/combo.py,pointmaze-large-stitch-v0,task3,20.0,40.0,20.0,30.0,30.0,28.00,7.48
+combo,Model-Based Forward,agents/combo.py,pointmaze-large-stitch-v0,task4,10.0,0.0,5.0,10.0,20.0,9.00,6.63
+combo,Model-Based Forward,agents/combo.py,pointmaze-large-stitch-v0,task5,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+combo,Model-Based Forward,agents/combo.py,antmaze-medium-stitch-v0,task1,15.0,0.0,5.0,5.0,5.0,6.00,4.90
+combo,Model-Based Forward,agents/combo.py,antmaze-medium-stitch-v0,task2,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+combo,Model-Based Forward,agents/combo.py,antmaze-medium-stitch-v0,task3,20.0,20.0,20.0,10.0,5.0,15.00,6.32
+combo,Model-Based Forward,agents/combo.py,antmaze-medium-stitch-v0,task4,0.0,0.0,5.0,0.0,0.0,1.00,2.00
+combo,Model-Based Forward,agents/combo.py,antmaze-medium-stitch-v0,task5,0.0,5.0,5.0,5.0,5.0,4.00,2.00
+combo,Model-Based Forward,agents/combo.py,antmaze-large-stitch-v0,task1,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+combo,Model-Based Forward,agents/combo.py,antmaze-large-stitch-v0,task2,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+combo,Model-Based Forward,agents/combo.py,antmaze-large-stitch-v0,task3,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+combo,Model-Based Forward,agents/combo.py,antmaze-large-stitch-v0,task4,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+combo,Model-Based Forward,agents/combo.py,antmaze-large-stitch-v0,task5,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+combo,Model-Based Forward,agents/combo.py,humanoidmaze-medium-stitch-v0,task1,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+combo,Model-Based Forward,agents/combo.py,humanoidmaze-medium-stitch-v0,task2,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+combo,Model-Based Forward,agents/combo.py,humanoidmaze-medium-stitch-v0,task3,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+combo,Model-Based Forward,agents/combo.py,humanoidmaze-medium-stitch-v0,task4,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+combo,Model-Based Forward,agents/combo.py,humanoidmaze-medium-stitch-v0,task5,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+iql,Model-Free 1-Step,agents/iql.py,pointmaze-medium-stitch-v0,task1,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+iql,Model-Free 1-Step,agents/iql.py,pointmaze-medium-stitch-v0,task2,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+iql,Model-Free 1-Step,agents/iql.py,pointmaze-medium-stitch-v0,task3,100.0,100.0,100.0,100.0,100.0,100.00,0.00
+iql,Model-Free 1-Step,agents/iql.py,pointmaze-medium-stitch-v0,task4,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+iql,Model-Free 1-Step,agents/iql.py,pointmaze-medium-stitch-v0,task5,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+iql,Model-Free 1-Step,agents/iql.py,pointmaze-large-stitch-v0,task1,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+iql,Model-Free 1-Step,agents/iql.py,pointmaze-large-stitch-v0,task2,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+iql,Model-Free 1-Step,agents/iql.py,pointmaze-large-stitch-v0,task3,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+iql,Model-Free 1-Step,agents/iql.py,pointmaze-large-stitch-v0,task4,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+iql,Model-Free 1-Step,agents/iql.py,pointmaze-large-stitch-v0,task5,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+iql,Model-Free 1-Step,agents/iql.py,antmaze-medium-stitch-v0,task1,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+iql,Model-Free 1-Step,agents/iql.py,antmaze-medium-stitch-v0,task2,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+iql,Model-Free 1-Step,agents/iql.py,antmaze-medium-stitch-v0,task3,0.0,0.0,5.0,0.0,0.0,1.00,2.00
+iql,Model-Free 1-Step,agents/iql.py,antmaze-medium-stitch-v0,task4,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+iql,Model-Free 1-Step,agents/iql.py,antmaze-medium-stitch-v0,task5,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+iql,Model-Free 1-Step,agents/iql.py,antmaze-large-stitch-v0,task1,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+iql,Model-Free 1-Step,agents/iql.py,antmaze-large-stitch-v0,task2,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+iql,Model-Free 1-Step,agents/iql.py,antmaze-large-stitch-v0,task3,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+iql,Model-Free 1-Step,agents/iql.py,antmaze-large-stitch-v0,task4,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+iql,Model-Free 1-Step,agents/iql.py,antmaze-large-stitch-v0,task5,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+iql,Model-Free 1-Step,agents/iql.py,humanoidmaze-medium-stitch-v0,task1,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+iql,Model-Free 1-Step,agents/iql.py,humanoidmaze-medium-stitch-v0,task2,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+iql,Model-Free 1-Step,agents/iql.py,humanoidmaze-medium-stitch-v0,task3,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+iql,Model-Free 1-Step,agents/iql.py,humanoidmaze-medium-stitch-v0,task4,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+iql,Model-Free 1-Step,agents/iql.py,humanoidmaze-medium-stitch-v0,task5,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+cql,Model-Free 1-Step,agents/cql.py,pointmaze-medium-stitch-v0,task1,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+cql,Model-Free 1-Step,agents/cql.py,pointmaze-medium-stitch-v0,task2,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+cql,Model-Free 1-Step,agents/cql.py,pointmaze-medium-stitch-v0,task3,100.0,100.0,100.0,100.0,100.0,100.00,0.00
+cql,Model-Free 1-Step,agents/cql.py,pointmaze-medium-stitch-v0,task4,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+cql,Model-Free 1-Step,agents/cql.py,pointmaze-medium-stitch-v0,task5,30.0,35.0,55.0,5.0,25.0,30.00,16.12
+cql,Model-Free 1-Step,agents/cql.py,pointmaze-large-stitch-v0,task1,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+cql,Model-Free 1-Step,agents/cql.py,pointmaze-large-stitch-v0,task2,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+cql,Model-Free 1-Step,agents/cql.py,pointmaze-large-stitch-v0,task3,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+cql,Model-Free 1-Step,agents/cql.py,pointmaze-large-stitch-v0,task4,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+cql,Model-Free 1-Step,agents/cql.py,pointmaze-large-stitch-v0,task5,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+cql,Model-Free 1-Step,agents/cql.py,antmaze-medium-stitch-v0,task1,10.0,10.0,0.0,10.0,10.0,8.00,4.00
+cql,Model-Free 1-Step,agents/cql.py,antmaze-medium-stitch-v0,task2,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+cql,Model-Free 1-Step,agents/cql.py,antmaze-medium-stitch-v0,task3,0.0,15.0,10.0,5.0,0.0,6.00,5.83
+cql,Model-Free 1-Step,agents/cql.py,antmaze-medium-stitch-v0,task4,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+cql,Model-Free 1-Step,agents/cql.py,antmaze-medium-stitch-v0,task5,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+cql,Model-Free 1-Step,agents/cql.py,antmaze-large-stitch-v0,task1,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+cql,Model-Free 1-Step,agents/cql.py,antmaze-large-stitch-v0,task2,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+cql,Model-Free 1-Step,agents/cql.py,antmaze-large-stitch-v0,task3,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+cql,Model-Free 1-Step,agents/cql.py,antmaze-large-stitch-v0,task4,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+cql,Model-Free 1-Step,agents/cql.py,antmaze-large-stitch-v0,task5,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+cql,Model-Free 1-Step,agents/cql.py,humanoidmaze-medium-stitch-v0,task1,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+cql,Model-Free 1-Step,agents/cql.py,humanoidmaze-medium-stitch-v0,task2,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+cql,Model-Free 1-Step,agents/cql.py,humanoidmaze-medium-stitch-v0,task3,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+cql,Model-Free 1-Step,agents/cql.py,humanoidmaze-medium-stitch-v0,task4,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+cql,Model-Free 1-Step,agents/cql.py,humanoidmaze-medium-stitch-v0,task5,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+rebrac,Model-Free 1-Step,agents/rebrac.py,pointmaze-medium-stitch-v0,task1,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+rebrac,Model-Free 1-Step,agents/rebrac.py,pointmaze-medium-stitch-v0,task2,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+rebrac,Model-Free 1-Step,agents/rebrac.py,pointmaze-medium-stitch-v0,task3,90.0,100.0,100.0,100.0,95.0,97.00,4.00
+rebrac,Model-Free 1-Step,agents/rebrac.py,pointmaze-medium-stitch-v0,task4,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+rebrac,Model-Free 1-Step,agents/rebrac.py,pointmaze-medium-stitch-v0,task5,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+rebrac,Model-Free 1-Step,agents/rebrac.py,pointmaze-large-stitch-v0,task1,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+rebrac,Model-Free 1-Step,agents/rebrac.py,pointmaze-large-stitch-v0,task2,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+rebrac,Model-Free 1-Step,agents/rebrac.py,pointmaze-large-stitch-v0,task3,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+rebrac,Model-Free 1-Step,agents/rebrac.py,pointmaze-large-stitch-v0,task4,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+rebrac,Model-Free 1-Step,agents/rebrac.py,pointmaze-large-stitch-v0,task5,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+rebrac,Model-Free 1-Step,agents/rebrac.py,antmaze-medium-stitch-v0,task1,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+rebrac,Model-Free 1-Step,agents/rebrac.py,antmaze-medium-stitch-v0,task2,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+rebrac,Model-Free 1-Step,agents/rebrac.py,antmaze-medium-stitch-v0,task3,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+rebrac,Model-Free 1-Step,agents/rebrac.py,antmaze-medium-stitch-v0,task4,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+rebrac,Model-Free 1-Step,agents/rebrac.py,antmaze-medium-stitch-v0,task5,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+rebrac,Model-Free 1-Step,agents/rebrac.py,antmaze-large-stitch-v0,task1,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+rebrac,Model-Free 1-Step,agents/rebrac.py,antmaze-large-stitch-v0,task2,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+rebrac,Model-Free 1-Step,agents/rebrac.py,antmaze-large-stitch-v0,task3,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+rebrac,Model-Free 1-Step,agents/rebrac.py,antmaze-large-stitch-v0,task4,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+rebrac,Model-Free 1-Step,agents/rebrac.py,antmaze-large-stitch-v0,task5,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+rebrac,Model-Free 1-Step,agents/rebrac.py,humanoidmaze-medium-stitch-v0,task1,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+rebrac,Model-Free 1-Step,agents/rebrac.py,humanoidmaze-medium-stitch-v0,task2,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+rebrac,Model-Free 1-Step,agents/rebrac.py,humanoidmaze-medium-stitch-v0,task3,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+rebrac,Model-Free 1-Step,agents/rebrac.py,humanoidmaze-medium-stitch-v0,task4,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+rebrac,Model-Free 1-Step,agents/rebrac.py,humanoidmaze-medium-stitch-v0,task5,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+nstep_iql_n5,Model-Free Multi-Step,agents/nstep_iql.py (n=5),pointmaze-medium-stitch-v0,task1,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+nstep_iql_n5,Model-Free Multi-Step,agents/nstep_iql.py (n=5),pointmaze-medium-stitch-v0,task2,20.0,20.0,0.0,15.0,10.0,13.00,7.48
+nstep_iql_n5,Model-Free Multi-Step,agents/nstep_iql.py (n=5),pointmaze-medium-stitch-v0,task3,100.0,95.0,100.0,100.0,100.0,99.00,2.00
+nstep_iql_n5,Model-Free Multi-Step,agents/nstep_iql.py (n=5),pointmaze-medium-stitch-v0,task4,45.0,80.0,65.0,70.0,65.0,65.00,11.40
+nstep_iql_n5,Model-Free Multi-Step,agents/nstep_iql.py (n=5),pointmaze-medium-stitch-v0,task5,100.0,100.0,100.0,100.0,100.0,100.00,0.00
+nstep_iql_n5,Model-Free Multi-Step,agents/nstep_iql.py (n=5),pointmaze-large-stitch-v0,task1,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+nstep_iql_n5,Model-Free Multi-Step,agents/nstep_iql.py (n=5),pointmaze-large-stitch-v0,task2,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+nstep_iql_n5,Model-Free Multi-Step,agents/nstep_iql.py (n=5),pointmaze-large-stitch-v0,task3,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+nstep_iql_n5,Model-Free Multi-Step,agents/nstep_iql.py (n=5),pointmaze-large-stitch-v0,task4,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+nstep_iql_n5,Model-Free Multi-Step,agents/nstep_iql.py (n=5),pointmaze-large-stitch-v0,task5,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+nstep_iql_n5,Model-Free Multi-Step,agents/nstep_iql.py (n=5),antmaze-medium-stitch-v0,task1,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+nstep_iql_n5,Model-Free Multi-Step,agents/nstep_iql.py (n=5),antmaze-medium-stitch-v0,task2,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+nstep_iql_n5,Model-Free Multi-Step,agents/nstep_iql.py (n=5),antmaze-medium-stitch-v0,task3,40.0,55.0,50.0,45.0,65.0,51.00,8.60
+nstep_iql_n5,Model-Free Multi-Step,agents/nstep_iql.py (n=5),antmaze-medium-stitch-v0,task4,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+nstep_iql_n5,Model-Free Multi-Step,agents/nstep_iql.py (n=5),antmaze-medium-stitch-v0,task5,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+nstep_iql_n5,Model-Free Multi-Step,agents/nstep_iql.py (n=5),antmaze-large-stitch-v0,task1,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+nstep_iql_n5,Model-Free Multi-Step,agents/nstep_iql.py (n=5),antmaze-large-stitch-v0,task2,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+nstep_iql_n5,Model-Free Multi-Step,agents/nstep_iql.py (n=5),antmaze-large-stitch-v0,task3,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+nstep_iql_n5,Model-Free Multi-Step,agents/nstep_iql.py (n=5),antmaze-large-stitch-v0,task4,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+nstep_iql_n5,Model-Free Multi-Step,agents/nstep_iql.py (n=5),antmaze-large-stitch-v0,task5,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+nstep_iql_n5,Model-Free Multi-Step,agents/nstep_iql.py (n=5),humanoidmaze-medium-stitch-v0,task1,5.0,0.0,0.0,0.0,0.0,1.00,2.00
+nstep_iql_n5,Model-Free Multi-Step,agents/nstep_iql.py (n=5),humanoidmaze-medium-stitch-v0,task2,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+nstep_iql_n5,Model-Free Multi-Step,agents/nstep_iql.py (n=5),humanoidmaze-medium-stitch-v0,task3,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+nstep_iql_n5,Model-Free Multi-Step,agents/nstep_iql.py (n=5),humanoidmaze-medium-stitch-v0,task4,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+nstep_iql_n5,Model-Free Multi-Step,agents/nstep_iql.py (n=5),humanoidmaze-medium-stitch-v0,task5,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+nstep_iql_n15,Model-Free Multi-Step,agents/nstep_iql.py (n=15),pointmaze-medium-stitch-v0,task1,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+nstep_iql_n15,Model-Free Multi-Step,agents/nstep_iql.py (n=15),pointmaze-medium-stitch-v0,task2,95.0,95.0,100.0,100.0,100.0,98.00,2.45
+nstep_iql_n15,Model-Free Multi-Step,agents/nstep_iql.py (n=15),pointmaze-medium-stitch-v0,task3,100.0,100.0,100.0,100.0,100.0,100.00,0.00
+nstep_iql_n15,Model-Free Multi-Step,agents/nstep_iql.py (n=15),pointmaze-medium-stitch-v0,task4,100.0,100.0,100.0,100.0,100.0,100.00,0.00
+nstep_iql_n15,Model-Free Multi-Step,agents/nstep_iql.py (n=15),pointmaze-medium-stitch-v0,task5,100.0,100.0,100.0,100.0,100.0,100.00,0.00
+nstep_iql_n15,Model-Free Multi-Step,agents/nstep_iql.py (n=15),pointmaze-large-stitch-v0,task1,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+nstep_iql_n15,Model-Free Multi-Step,agents/nstep_iql.py (n=15),pointmaze-large-stitch-v0,task2,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+nstep_iql_n15,Model-Free Multi-Step,agents/nstep_iql.py (n=15),pointmaze-large-stitch-v0,task3,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+nstep_iql_n15,Model-Free Multi-Step,agents/nstep_iql.py (n=15),pointmaze-large-stitch-v0,task4,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+nstep_iql_n15,Model-Free Multi-Step,agents/nstep_iql.py (n=15),pointmaze-large-stitch-v0,task5,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+nstep_iql_n15,Model-Free Multi-Step,agents/nstep_iql.py (n=15),antmaze-medium-stitch-v0,task1,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+nstep_iql_n15,Model-Free Multi-Step,agents/nstep_iql.py (n=15),antmaze-medium-stitch-v0,task2,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+nstep_iql_n15,Model-Free Multi-Step,agents/nstep_iql.py (n=15),antmaze-medium-stitch-v0,task3,55.0,55.0,30.0,85.0,60.0,57.00,17.49
+nstep_iql_n15,Model-Free Multi-Step,agents/nstep_iql.py (n=15),antmaze-medium-stitch-v0,task4,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+nstep_iql_n15,Model-Free Multi-Step,agents/nstep_iql.py (n=15),antmaze-medium-stitch-v0,task5,5.0,0.0,5.0,20.0,20.0,10.00,8.37
+nstep_iql_n15,Model-Free Multi-Step,agents/nstep_iql.py (n=15),antmaze-large-stitch-v0,task1,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+nstep_iql_n15,Model-Free Multi-Step,agents/nstep_iql.py (n=15),antmaze-large-stitch-v0,task2,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+nstep_iql_n15,Model-Free Multi-Step,agents/nstep_iql.py (n=15),antmaze-large-stitch-v0,task3,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+nstep_iql_n15,Model-Free Multi-Step,agents/nstep_iql.py (n=15),antmaze-large-stitch-v0,task4,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+nstep_iql_n15,Model-Free Multi-Step,agents/nstep_iql.py (n=15),antmaze-large-stitch-v0,task5,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+nstep_iql_n15,Model-Free Multi-Step,agents/nstep_iql.py (n=15),humanoidmaze-medium-stitch-v0,task1,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+nstep_iql_n15,Model-Free Multi-Step,agents/nstep_iql.py (n=15),humanoidmaze-medium-stitch-v0,task2,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+nstep_iql_n15,Model-Free Multi-Step,agents/nstep_iql.py (n=15),humanoidmaze-medium-stitch-v0,task3,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+nstep_iql_n15,Model-Free Multi-Step,agents/nstep_iql.py (n=15),humanoidmaze-medium-stitch-v0,task4,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+nstep_iql_n15,Model-Free Multi-Step,agents/nstep_iql.py (n=15),humanoidmaze-medium-stitch-v0,task5,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+gciql,Model-Free Goal-Conditioned,agents/gciql.py,pointmaze-medium-stitch-v0,task1,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+gciql,Model-Free Goal-Conditioned,agents/gciql.py,pointmaze-medium-stitch-v0,task2,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+gciql,Model-Free Goal-Conditioned,agents/gciql.py,pointmaze-medium-stitch-v0,task3,100.0,95.0,100.0,100.0,100.0,99.00,2.00
+gciql,Model-Free Goal-Conditioned,agents/gciql.py,pointmaze-medium-stitch-v0,task4,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+gciql,Model-Free Goal-Conditioned,agents/gciql.py,pointmaze-medium-stitch-v0,task5,100.0,100.0,100.0,100.0,100.0,100.00,0.00
+gciql,Model-Free Goal-Conditioned,agents/gciql.py,pointmaze-large-stitch-v0,task1,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+gciql,Model-Free Goal-Conditioned,agents/gciql.py,pointmaze-large-stitch-v0,task2,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+gciql,Model-Free Goal-Conditioned,agents/gciql.py,pointmaze-large-stitch-v0,task3,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+gciql,Model-Free Goal-Conditioned,agents/gciql.py,pointmaze-large-stitch-v0,task4,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+gciql,Model-Free Goal-Conditioned,agents/gciql.py,pointmaze-large-stitch-v0,task5,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+gciql,Model-Free Goal-Conditioned,agents/gciql.py,antmaze-medium-stitch-v0,task1,0.0,0.0,0.0,5.0,5.0,2.00,2.45
+gciql,Model-Free Goal-Conditioned,agents/gciql.py,antmaze-medium-stitch-v0,task2,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+gciql,Model-Free Goal-Conditioned,agents/gciql.py,antmaze-medium-stitch-v0,task3,55.0,20.0,50.0,50.0,40.0,43.00,12.49
+gciql,Model-Free Goal-Conditioned,agents/gciql.py,antmaze-medium-stitch-v0,task4,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+gciql,Model-Free Goal-Conditioned,agents/gciql.py,antmaze-medium-stitch-v0,task5,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+gciql,Model-Free Goal-Conditioned,agents/gciql.py,antmaze-large-stitch-v0,task1,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+gciql,Model-Free Goal-Conditioned,agents/gciql.py,antmaze-large-stitch-v0,task2,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+gciql,Model-Free Goal-Conditioned,agents/gciql.py,antmaze-large-stitch-v0,task3,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+gciql,Model-Free Goal-Conditioned,agents/gciql.py,antmaze-large-stitch-v0,task4,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+gciql,Model-Free Goal-Conditioned,agents/gciql.py,antmaze-large-stitch-v0,task5,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+gciql,Model-Free Goal-Conditioned,agents/gciql.py,humanoidmaze-medium-stitch-v0,task1,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+gciql,Model-Free Goal-Conditioned,agents/gciql.py,humanoidmaze-medium-stitch-v0,task2,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+gciql,Model-Free Goal-Conditioned,agents/gciql.py,humanoidmaze-medium-stitch-v0,task3,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+gciql,Model-Free Goal-Conditioned,agents/gciql.py,humanoidmaze-medium-stitch-v0,task4,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+gciql,Model-Free Goal-Conditioned,agents/gciql.py,humanoidmaze-medium-stitch-v0,task5,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+qrl,Model-Free Goal-Conditioned,agents/qrl.py,pointmaze-medium-stitch-v0,task1,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+qrl,Model-Free Goal-Conditioned,agents/qrl.py,pointmaze-medium-stitch-v0,task2,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+qrl,Model-Free Goal-Conditioned,agents/qrl.py,pointmaze-medium-stitch-v0,task3,100.0,100.0,100.0,95.0,100.0,99.00,2.00
+qrl,Model-Free Goal-Conditioned,agents/qrl.py,pointmaze-medium-stitch-v0,task4,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+qrl,Model-Free Goal-Conditioned,agents/qrl.py,pointmaze-medium-stitch-v0,task5,100.0,100.0,100.0,90.0,100.0,98.00,4.00
+qrl,Model-Free Goal-Conditioned,agents/qrl.py,pointmaze-large-stitch-v0,task1,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+qrl,Model-Free Goal-Conditioned,agents/qrl.py,pointmaze-large-stitch-v0,task2,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+qrl,Model-Free Goal-Conditioned,agents/qrl.py,pointmaze-large-stitch-v0,task3,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+qrl,Model-Free Goal-Conditioned,agents/qrl.py,pointmaze-large-stitch-v0,task4,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+qrl,Model-Free Goal-Conditioned,agents/qrl.py,pointmaze-large-stitch-v0,task5,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+qrl,Model-Free Goal-Conditioned,agents/qrl.py,antmaze-medium-stitch-v0,task1,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+qrl,Model-Free Goal-Conditioned,agents/qrl.py,antmaze-medium-stitch-v0,task2,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+qrl,Model-Free Goal-Conditioned,agents/qrl.py,antmaze-medium-stitch-v0,task3,30.0,15.0,40.0,35.0,35.0,31.00,8.60
+qrl,Model-Free Goal-Conditioned,agents/qrl.py,antmaze-medium-stitch-v0,task4,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+qrl,Model-Free Goal-Conditioned,agents/qrl.py,antmaze-medium-stitch-v0,task5,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+qrl,Model-Free Goal-Conditioned,agents/qrl.py,antmaze-large-stitch-v0,task1,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+qrl,Model-Free Goal-Conditioned,agents/qrl.py,antmaze-large-stitch-v0,task2,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+qrl,Model-Free Goal-Conditioned,agents/qrl.py,antmaze-large-stitch-v0,task3,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+qrl,Model-Free Goal-Conditioned,agents/qrl.py,antmaze-large-stitch-v0,task4,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+qrl,Model-Free Goal-Conditioned,agents/qrl.py,antmaze-large-stitch-v0,task5,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+qrl,Model-Free Goal-Conditioned,agents/qrl.py,humanoidmaze-medium-stitch-v0,task1,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+qrl,Model-Free Goal-Conditioned,agents/qrl.py,humanoidmaze-medium-stitch-v0,task2,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+qrl,Model-Free Goal-Conditioned,agents/qrl.py,humanoidmaze-medium-stitch-v0,task3,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+qrl,Model-Free Goal-Conditioned,agents/qrl.py,humanoidmaze-medium-stitch-v0,task4,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+qrl,Model-Free Goal-Conditioned,agents/qrl.py,humanoidmaze-medium-stitch-v0,task5,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+crl,Model-Free Goal-Conditioned,agents/crl.py,pointmaze-medium-stitch-v0,task1,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+crl,Model-Free Goal-Conditioned,agents/crl.py,pointmaze-medium-stitch-v0,task2,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+crl,Model-Free Goal-Conditioned,agents/crl.py,pointmaze-medium-stitch-v0,task3,100.0,100.0,100.0,100.0,100.0,100.00,0.00
+crl,Model-Free Goal-Conditioned,agents/crl.py,pointmaze-medium-stitch-v0,task4,0.0,10.0,0.0,0.0,0.0,2.00,4.00
+crl,Model-Free Goal-Conditioned,agents/crl.py,pointmaze-medium-stitch-v0,task5,100.0,100.0,100.0,100.0,100.0,100.00,0.00
+crl,Model-Free Goal-Conditioned,agents/crl.py,pointmaze-large-stitch-v0,task1,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+crl,Model-Free Goal-Conditioned,agents/crl.py,pointmaze-large-stitch-v0,task2,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+crl,Model-Free Goal-Conditioned,agents/crl.py,pointmaze-large-stitch-v0,task3,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+crl,Model-Free Goal-Conditioned,agents/crl.py,pointmaze-large-stitch-v0,task4,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+crl,Model-Free Goal-Conditioned,agents/crl.py,pointmaze-large-stitch-v0,task5,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+crl,Model-Free Goal-Conditioned,agents/crl.py,antmaze-medium-stitch-v0,task1,0.0,0.0,5.0,5.0,5.0,3.00,2.45
+crl,Model-Free Goal-Conditioned,agents/crl.py,antmaze-medium-stitch-v0,task2,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+crl,Model-Free Goal-Conditioned,agents/crl.py,antmaze-medium-stitch-v0,task3,45.0,30.0,50.0,50.0,55.0,46.00,8.60
+crl,Model-Free Goal-Conditioned,agents/crl.py,antmaze-medium-stitch-v0,task4,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+crl,Model-Free Goal-Conditioned,agents/crl.py,antmaze-medium-stitch-v0,task5,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+crl,Model-Free Goal-Conditioned,agents/crl.py,antmaze-large-stitch-v0,task1,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+crl,Model-Free Goal-Conditioned,agents/crl.py,antmaze-large-stitch-v0,task2,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+crl,Model-Free Goal-Conditioned,agents/crl.py,antmaze-large-stitch-v0,task3,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+crl,Model-Free Goal-Conditioned,agents/crl.py,antmaze-large-stitch-v0,task4,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+crl,Model-Free Goal-Conditioned,agents/crl.py,antmaze-large-stitch-v0,task5,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+crl,Model-Free Goal-Conditioned,agents/crl.py,humanoidmaze-medium-stitch-v0,task1,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+crl,Model-Free Goal-Conditioned,agents/crl.py,humanoidmaze-medium-stitch-v0,task2,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+crl,Model-Free Goal-Conditioned,agents/crl.py,humanoidmaze-medium-stitch-v0,task3,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+crl,Model-Free Goal-Conditioned,agents/crl.py,humanoidmaze-medium-stitch-v0,task4,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+crl,Model-Free Goal-Conditioned,agents/crl.py,humanoidmaze-medium-stitch-v0,task5,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+hiql,Model-Free Hierarchical,agents/hiql.py,pointmaze-medium-stitch-v0,task1,100.0,100.0,100.0,100.0,100.0,100.00,0.00
+hiql,Model-Free Hierarchical,agents/hiql.py,pointmaze-medium-stitch-v0,task2,100.0,100.0,100.0,100.0,100.0,100.00,0.00
+hiql,Model-Free Hierarchical,agents/hiql.py,pointmaze-medium-stitch-v0,task3,100.0,100.0,100.0,100.0,100.0,100.00,0.00
+hiql,Model-Free Hierarchical,agents/hiql.py,pointmaze-medium-stitch-v0,task4,100.0,100.0,100.0,100.0,100.0,100.00,0.00
+hiql,Model-Free Hierarchical,agents/hiql.py,pointmaze-medium-stitch-v0,task5,100.0,100.0,100.0,100.0,100.0,100.00,0.00
+hiql,Model-Free Hierarchical,agents/hiql.py,pointmaze-large-stitch-v0,task1,100.0,100.0,100.0,100.0,95.0,99.00,2.00
+hiql,Model-Free Hierarchical,agents/hiql.py,pointmaze-large-stitch-v0,task2,100.0,100.0,100.0,100.0,100.0,100.00,0.00
+hiql,Model-Free Hierarchical,agents/hiql.py,pointmaze-large-stitch-v0,task3,100.0,100.0,100.0,100.0,100.0,100.00,0.00
+hiql,Model-Free Hierarchical,agents/hiql.py,pointmaze-large-stitch-v0,task4,100.0,100.0,100.0,100.0,100.0,100.00,0.00
+hiql,Model-Free Hierarchical,agents/hiql.py,pointmaze-large-stitch-v0,task5,100.0,100.0,100.0,100.0,100.0,100.00,0.00
+hiql,Model-Free Hierarchical,agents/hiql.py,antmaze-medium-stitch-v0,task1,5.0,45.0,40.0,20.0,20.0,26.00,14.63
+hiql,Model-Free Hierarchical,agents/hiql.py,antmaze-medium-stitch-v0,task2,40.0,30.0,25.0,55.0,35.0,37.00,10.30
+hiql,Model-Free Hierarchical,agents/hiql.py,antmaze-medium-stitch-v0,task3,65.0,45.0,55.0,65.0,55.0,57.00,7.48
+hiql,Model-Free Hierarchical,agents/hiql.py,antmaze-medium-stitch-v0,task4,30.0,40.0,55.0,30.0,25.0,36.00,10.68
+hiql,Model-Free Hierarchical,agents/hiql.py,antmaze-medium-stitch-v0,task5,55.0,55.0,40.0,45.0,60.0,51.00,7.35
+hiql,Model-Free Hierarchical,agents/hiql.py,antmaze-large-stitch-v0,task1,0.0,0.0,0.0,0.0,5.0,1.00,2.00
+hiql,Model-Free Hierarchical,agents/hiql.py,antmaze-large-stitch-v0,task2,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+hiql,Model-Free Hierarchical,agents/hiql.py,antmaze-large-stitch-v0,task3,5.0,5.0,10.0,20.0,0.0,8.00,6.78
+hiql,Model-Free Hierarchical,agents/hiql.py,antmaze-large-stitch-v0,task4,15.0,0.0,0.0,5.0,0.0,4.00,5.83
+hiql,Model-Free Hierarchical,agents/hiql.py,antmaze-large-stitch-v0,task5,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+hiql,Model-Free Hierarchical,agents/hiql.py,humanoidmaze-medium-stitch-v0,task1,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+hiql,Model-Free Hierarchical,agents/hiql.py,humanoidmaze-medium-stitch-v0,task2,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+hiql,Model-Free Hierarchical,agents/hiql.py,humanoidmaze-medium-stitch-v0,task3,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+hiql,Model-Free Hierarchical,agents/hiql.py,humanoidmaze-medium-stitch-v0,task4,0.0,0.0,0.0,0.0,0.0,0.00,0.00
+hiql,Model-Free Hierarchical,agents/hiql.py,humanoidmaze-medium-stitch-v0,task5,0.0,0.0,0.0,0.0,0.0,0.00,0.00
