@@ -69,6 +69,7 @@ def main():
     print(f'{len(done)} done, {len(todo)} to run on GPUs {gpus}', flush=True)
 
     active = {}  # slot -> (process, index, log file)
+    launched = set(done)
     stopping = False
 
     def stop(signum, frame):
@@ -82,16 +83,19 @@ def main():
     signal.signal(signal.SIGTERM, stop)
     signal.signal(signal.SIGUSR1, stop)
 
-    pending = iter(todo)
     exhausted = False
     while active or not (exhausted or stopping):
+        commands, todo_now, done_now = remaining(args.queue_dir, args.max_failures)
+        avail = [i for i in todo_now if i not in launched]
+        exhausted = (len(avail) == 0)
         for slot, gpu in enumerate(gpus):
             if slot in active or exhausted or stopping:
                 continue
-            index = next(pending, None)
+            index = avail.pop(0) if avail else None
             if index is None:
                 exhausted = True
                 continue
+            launched.add(index)
             env = os.environ.copy()
             env['CUDA_VISIBLE_DEVICES'] = gpu
             env['XLA_PYTHON_CLIENT_PREALLOCATE'] = 'false'
@@ -115,6 +119,7 @@ def main():
             elif stopping:
                 print(f'STOPPED {index} (resumes later)', flush=True)
             else:
+                launched.discard(index)
                 append(os.path.join(args.queue_dir, 'failures.txt'), index)
                 print(f'FAIL {index} exit={status} (log: {log_dir}/{index:05d}.log)', flush=True)
         if active:
