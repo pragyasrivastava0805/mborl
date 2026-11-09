@@ -50,6 +50,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument('queue_dir')
     parser.add_argument('--max_failures', type=int, default=2, help='Give up on a run after this many failed exits.')
+    parser.add_argument('--workers_per_gpu', type=int, default=1, help='Number of concurrent worker slots per GPU.')
     parser.add_argument('--count', action='store_true', help='Print the number of runs left and exit.')
     args = parser.parse_args()
 
@@ -59,9 +60,10 @@ def main():
         return
 
     visible = os.environ.get('CUDA_VISIBLE_DEVICES')
-    gpus = visible.split(',') if visible else [str(i) for i in range(int(os.environ.get('NUM_GPUS', 8)))]
+    base_gpus = visible.split(',') if visible else [str(i) for i in range(int(os.environ.get('NUM_GPUS', 8)))]
+    gpus = [gpu for _ in range(max(1, args.workers_per_gpu)) for gpu in base_gpus]
     cpus = sorted(os.sched_getaffinity(0))
-    cpu_sets = [cpus[k * len(cpus) // len(gpus): (k + 1) * len(cpus) // len(gpus)] for k in range(len(gpus))]
+    cpu_sets = [cpus[k * len(cpus) // len(gpus): (k + 1) * len(cpus) // len(gpus)] or cpus for k in range(len(gpus))]
     log_dir = os.path.join(args.queue_dir, 'logs', 'runs')
     os.makedirs(log_dir, exist_ok=True)
     print(f'{len(done)} done, {len(todo)} to run on GPUs {gpus}', flush=True)

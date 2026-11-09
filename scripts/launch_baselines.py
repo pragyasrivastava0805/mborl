@@ -149,6 +149,7 @@ def main():
     parser.add_argument('--mb_batch_size', type=int, default=50000)
     parser.add_argument('--wandb_mode', default='offline', choices=['online', 'offline', 'disabled'])
     parser.add_argument('--run_group', default=None)
+    parser.add_argument('--job_prefix', default='base')
     parser.add_argument('--data_root', default=DEFAULT_DATA_ROOT)
     parser.add_argument('--repo', default=REPO)
     parser.add_argument('--save_dir', default=os.path.join(REPO, 'exp_baselines'))
@@ -171,7 +172,7 @@ def main():
 
             for task_name, (env_name, ds_subdir) in suite_map.items():
                 dataset_dir = os.path.join(args.data_root, ds_subdir)
-                job_id = f'base-{baseline}-{task_name}-s{seed}'
+                job_id = f'{args.job_prefix}-{baseline}-{task_name}-s{seed}'
                 cmd = build_command(args, baseline, env_name, dataset_dir, seed, job_id)
                 tasks.append(dict(
                     index=len(tasks),

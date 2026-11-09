@@ -186,11 +186,17 @@ def main(_):
     def add_rollouts(buffer, fake_batch):
         # Rollouts are already in normalized model coordinates; add them without rescaling.
         fake_batch = {k: np.asarray(v) for k, v in fake_batch.items()}
+        fake_batch.pop('step_next_observations', None)
         if 'rollout_valid' in fake_batch:
             keep = fake_batch.pop('rollout_valid') > 0
-            fake_batch = {k: v[keep] for k, v in fake_batch.items()}
+            if np.any(keep):
+                fake_batch = {k: v[keep] for k, v in fake_batch.items()}
         if buffer is None:
-            capacity = FLAGS.mb_retain_epoch * len(fake_batch['observations'])
+            rollout_steps = int(config.get('rollout_steps', 5))
+            capacity = max(
+                FLAGS.mb_retain_epoch * FLAGS.mb_batch_size * rollout_steps,
+                FLAGS.mb_retain_epoch * len(fake_batch['observations']),
+            )
             buffer = ReplayBuffer.create({k: v[0] for k, v in fake_batch.items()}, size=capacity)
         buffer.add_batch(fake_batch)
         return buffer
