@@ -20,7 +20,7 @@
     "antmaze-large-stitch-v0",
     "humanoidmaze-medium-stitch-v0"
   ],
-  "total_seed_runs": 1750,
+  "total_seed_runs": 1875,
   "baselines": {
     "mbpo": {
       "family": "Model-Based Forward",
@@ -437,7 +437,8 @@
           "mean": 14.0,
           "std": 4.65
         }
-      }
+      },
+      "five_env_std": 6.4
     },
     "mopo": {
       "family": "Model-Based Forward",
@@ -854,7 +855,8 @@
           "mean": 13.4,
           "std": 3.01
         }
-      }
+      },
+      "five_env_std": 0.0
     },
     "morel": {
       "family": "Model-Based Forward",
@@ -1271,7 +1273,8 @@
           "mean": 18.6,
           "std": 3.83
         }
-      }
+      },
+      "five_env_std": 1.02
     },
     "reverse_morel": {
       "family": "Model-Based Reverse (USAD-Truncated, Dataset-Anchored)",
@@ -1687,6 +1690,424 @@
         "task5": {
           "mean": 56.0,
           "std": 2.53
+        }
+      },
+      "five_env_std": 4.45
+    },
+    "reverse_morel_anchor_bootstrap": {
+      "family": "model-based",
+      "module": "agents/reverse_morel_anchor_bootstrap.py",
+      "environments": {
+        "pointmaze-medium-stitch-v0": {
+          "tasks": {
+            "task1": {
+              "seeds": [
+                100.0,
+                100.0,
+                100.0,
+                100.0,
+                100.0
+              ],
+              "mean": 100.0,
+              "std": 0.0
+            },
+            "task2": {
+              "seeds": [
+                100.0,
+                100.0,
+                100.0,
+                100.0,
+                100.0
+              ],
+              "mean": 100.0,
+              "std": 0.0
+            },
+            "task3": {
+              "seeds": [
+                100.0,
+                100.0,
+                100.0,
+                100.0,
+                100.0
+              ],
+              "mean": 100.0,
+              "std": 0.0
+            },
+            "task4": {
+              "seeds": [
+                100.0,
+                100.0,
+                100.0,
+                100.0,
+                100.0
+              ],
+              "mean": 100.0,
+              "std": 0.0
+            },
+            "task5": {
+              "seeds": [
+                95.0,
+                100.0,
+                100.0,
+                100.0,
+                100.0
+              ],
+              "mean": 99.0,
+              "std": 2.0
+            }
+          },
+          "five_task_seeds": [
+            99.0,
+            100.0,
+            100.0,
+            100.0,
+            100.0
+          ],
+          "five_task_mean": 99.8,
+          "five_task_std": 0.4,
+          "seeds": [
+            100.0,
+            100.0,
+            100.0,
+            100.0,
+            100.0
+          ],
+          "mean": 100.0,
+          "std": 0.0
+        },
+        "pointmaze-large-stitch-v0": {
+          "tasks": {
+            "task1": {
+              "seeds": [
+                100.0,
+                100.0,
+                95.0,
+                100.0,
+                100.0
+              ],
+              "mean": 99.0,
+              "std": 2.0
+            },
+            "task2": {
+              "seeds": [
+                100.0,
+                100.0,
+                100.0,
+                100.0,
+                100.0
+              ],
+              "mean": 100.0,
+              "std": 0.0
+            },
+            "task3": {
+              "seeds": [
+                100.0,
+                100.0,
+                100.0,
+                100.0,
+                100.0
+              ],
+              "mean": 100.0,
+              "std": 0.0
+            },
+            "task4": {
+              "seeds": [
+                100.0,
+                100.0,
+                100.0,
+                100.0,
+                100.0
+              ],
+              "mean": 100.0,
+              "std": 0.0
+            },
+            "task5": {
+              "seeds": [
+                100.0,
+                100.0,
+                100.0,
+                100.0,
+                100.0
+              ],
+              "mean": 100.0,
+              "std": 0.0
+            }
+          },
+          "five_task_seeds": [
+            100.0,
+            100.0,
+            99.0,
+            100.0,
+            100.0
+          ],
+          "five_task_mean": 99.8,
+          "five_task_std": 0.4,
+          "seeds": [
+            100.0,
+            100.0,
+            95.0,
+            100.0,
+            100.0
+          ],
+          "mean": 99.0,
+          "std": 2.0
+        },
+        "antmaze-medium-stitch-v0": {
+          "tasks": {
+            "task1": {
+              "seeds": [
+                45.0,
+                30.0,
+                70.0,
+                50.0,
+                70.0
+              ],
+              "mean": 53.0,
+              "std": 15.36
+            },
+            "task2": {
+              "seeds": [
+                60.0,
+                70.0,
+                30.0,
+                45.0,
+                60.0
+              ],
+              "mean": 53.0,
+              "std": 14.0
+            },
+            "task3": {
+              "seeds": [
+                65.0,
+                70.0,
+                90.0,
+                65.0,
+                60.0
+              ],
+              "mean": 70.0,
+              "std": 10.49
+            },
+            "task4": {
+              "seeds": [
+                45.0,
+                70.0,
+                50.0,
+                70.0,
+                80.0
+              ],
+              "mean": 63.0,
+              "std": 13.27
+            },
+            "task5": {
+              "seeds": [
+                80.0,
+                80.0,
+                60.0,
+                80.0,
+                65.0
+              ],
+              "mean": 73.0,
+              "std": 8.72
+            }
+          },
+          "five_task_seeds": [
+            59.0,
+            64.0,
+            60.0,
+            62.0,
+            67.0
+          ],
+          "five_task_mean": 62.4,
+          "five_task_std": 2.87,
+          "seeds": [
+            45.0,
+            30.0,
+            70.0,
+            50.0,
+            70.0
+          ],
+          "mean": 53.0,
+          "std": 15.36
+        },
+        "antmaze-large-stitch-v0": {
+          "tasks": {
+            "task1": {
+              "seeds": [
+                25.0,
+                20.0,
+                35.0,
+                25.0,
+                20.0
+              ],
+              "mean": 25.0,
+              "std": 5.48
+            },
+            "task2": {
+              "seeds": [
+                30.0,
+                10.0,
+                25.0,
+                30.0,
+                5.0
+              ],
+              "mean": 20.0,
+              "std": 10.49
+            },
+            "task3": {
+              "seeds": [
+                40.0,
+                50.0,
+                20.0,
+                55.0,
+                50.0
+              ],
+              "mean": 43.0,
+              "std": 12.49
+            },
+            "task4": {
+              "seeds": [
+                50.0,
+                70.0,
+                25.0,
+                35.0,
+                40.0
+              ],
+              "mean": 44.0,
+              "std": 15.3
+            },
+            "task5": {
+              "seeds": [
+                30.0,
+                35.0,
+                25.0,
+                25.0,
+                25.0
+              ],
+              "mean": 28.0,
+              "std": 4.0
+            }
+          },
+          "five_task_seeds": [
+            35.0,
+            37.0,
+            26.0,
+            34.0,
+            28.0
+          ],
+          "five_task_mean": 32.0,
+          "five_task_std": 4.24,
+          "seeds": [
+            25.0,
+            20.0,
+            35.0,
+            25.0,
+            20.0
+          ],
+          "mean": 25.0,
+          "std": 5.48
+        },
+        "humanoidmaze-medium-stitch-v0": {
+          "tasks": {
+            "task1": {
+              "seeds": [
+                10.0,
+                25.0,
+                15.0,
+                5.0,
+                20.0
+              ],
+              "mean": 15.0,
+              "std": 7.07
+            },
+            "task2": {
+              "seeds": [
+                25.0,
+                30.0,
+                10.0,
+                0.0,
+                25.0
+              ],
+              "mean": 18.0,
+              "std": 11.22
+            },
+            "task3": {
+              "seeds": [
+                30.0,
+                10.0,
+                35.0,
+                25.0,
+                35.0
+              ],
+              "mean": 27.0,
+              "std": 9.27
+            },
+            "task4": {
+              "seeds": [
+                20.0,
+                10.0,
+                5.0,
+                30.0,
+                15.0
+              ],
+              "mean": 16.0,
+              "std": 8.6
+            },
+            "task5": {
+              "seeds": [
+                40.0,
+                30.0,
+                10.0,
+                35.0,
+                45.0
+              ],
+              "mean": 32.0,
+              "std": 12.08
+            }
+          },
+          "five_task_seeds": [
+            25.0,
+            21.0,
+            15.0,
+            19.0,
+            28.0
+          ],
+          "five_task_mean": 21.6,
+          "five_task_std": 4.54,
+          "seeds": [
+            10.0,
+            25.0,
+            15.0,
+            5.0,
+            20.0
+          ],
+          "mean": 15.0,
+          "std": 7.07
+        }
+      },
+      "five_env_mean": 58.4,
+      "five_env_std": 3.38,
+      "all5tasks_five_env_mean": 63.12,
+      "all5tasks_five_env_std": 1.66,
+      "per_task_five_env": {
+        "task1": {
+          "mean": 58.4,
+          "std": 3.38
+        },
+        "task2": {
+          "mean": 58.2,
+          "std": 3.87
+        },
+        "task3": {
+          "mean": 68.0,
+          "std": 1.26
+        },
+        "task4": {
+          "mean": 64.6,
+          "std": 4.84
+        },
+        "task5": {
+          "mean": 66.4,
+          "std": 3.77
         }
       }
     },
@@ -2105,7 +2526,8 @@
           "mean": 9.4,
           "std": 3.01
         }
-      }
+      },
+      "five_env_std": 7.4
     },
     "iql": {
       "family": "Model-Free 1-Step",
@@ -2522,7 +2944,8 @@
           "mean": 0.0,
           "std": 0.0
         }
-      }
+      },
+      "five_env_std": 0.0
     },
     "cql": {
       "family": "Model-Free 1-Step",
@@ -2939,7 +3362,8 @@
           "mean": 6.0,
           "std": 3.22
         }
-      }
+      },
+      "five_env_std": 0.8
     },
     "rebrac": {
       "family": "Model-Free 1-Step",
@@ -3356,7 +3780,8 @@
           "mean": 0.0,
           "std": 0.0
         }
-      }
+      },
+      "five_env_std": 0.0
     },
     "nstep_iql_n5": {
       "family": "Model-Free Multi-Step",
@@ -3773,7 +4198,8 @@
           "mean": 20.0,
           "std": 0.0
         }
-      }
+      },
+      "five_env_std": 0.4
     },
     "nstep_iql_n15": {
       "family": "Model-Free Multi-Step",
@@ -4190,7 +4616,8 @@
           "mean": 22.0,
           "std": 1.67
         }
-      }
+      },
+      "five_env_std": 0.0
     },
     "gciql": {
       "family": "Model-Free Goal-Conditioned",
@@ -4607,7 +5034,8 @@
           "mean": 20.0,
           "std": 0.0
         }
-      }
+      },
+      "five_env_std": 0.49
     },
     "qrl": {
       "family": "Model-Free Goal-Conditioned",
@@ -5024,7 +5452,8 @@
           "mean": 19.6,
           "std": 0.8
         }
-      }
+      },
+      "five_env_std": 0.0
     },
     "crl": {
       "family": "Model-Free Goal-Conditioned",
@@ -5441,7 +5870,8 @@
           "mean": 20.0,
           "std": 0.0
         }
-      }
+      },
+      "five_env_std": 0.49
     },
     "hiql": {
       "family": "Model-Free Hierarchical",
@@ -5858,7 +6288,8 @@
           "mean": 50.2,
           "std": 1.47
         }
-      }
+      },
+      "five_env_std": 2.93
     }
   }
 }

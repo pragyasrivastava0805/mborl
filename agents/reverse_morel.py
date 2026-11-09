@@ -156,7 +156,7 @@ class ReverseMOReLAgent(flax.struct.PyTreeNode):
         value_goals = batch['value_goals'] if 'value_goals' in batch else None
 
         def reverse_rollout_step(carry, _):
-            cur_next_ob, cum_return, cum_discount, alive, halted, rng = carry
+            cur_next_ob, alive, halted, rng = carry
             rng, action_rng, dyn_rng = jax.random.split(rng, 3)
 
             rev_act_dist = self.model.select('reverse_actor')(cur_next_ob, goals=value_goals)
@@ -171,42 +171,25 @@ class ReverseMOReLAgent(flax.struct.PyTreeNode):
             succ_logit = self.model.select('success')(prev_ob, value_goals, rev_action)
             success = (jax.nn.sigmoid(succ_logit) > 0.5).astype(jnp.float32)
             if value_goals is not None:
-                step_rewards = success - (1.0 if self.config['gc_negative'] else 0.0)
+                rewards = success - (1.0 if self.config['gc_negative'] else 0.0)
             else:
-                step_rewards = self.model.select('reward')(prev_ob, None, rev_action)
+                rewards = self.model.select('reward')(prev_ob, None, rev_action)
 
-            # Anchor-Direct k-Step Bootstrap: every surviving synthetic state s_tilde_{t+H-k} (k = 1..H)
-            # bootstraps directly on the real dataset anchor state `anchor_ob in D_real` with exact
-            # k-step discounted return R^{(k)} and discount factor gamma^k * prod_{m=1}^k (1 - success_m).
-            step_mask = 1.0 - success
-            new_cum_return = jnp.where(
-                new_halted > 0.5,
-                cum_return,
-                step_rewards + self.config['discount'] * step_mask * cum_return,
-            )
-            anchor_mask = step_mask * cum_discount
-            new_cum_discount = jnp.where(
-                new_halted > 0.5,
-                cum_discount,
-                self.config['discount'] * anchor_mask,
-            )
+            masks = 1.0 - success
             rollout_valid = alive * (1.0 - new_halted)
-            next_alive = rollout_valid
+            next_alive = rollout_valid * masks
 
-            return (prev_ob, new_cum_return, new_cum_discount, next_alive, new_halted, rng), {
+            return (prev_ob, next_alive, new_halted, rng), {
                 'observations': prev_ob,
                 'actions': rev_action,
-                'next_observations': anchor_ob,
-                'step_next_observations': cur_next_ob,
-                'rewards': new_cum_return,
-                'masks': anchor_mask,
+                'next_observations': cur_next_ob,
+                'rewards': rewards,
+                'masks': masks,
                 'rollout_valid': rollout_valid,
             }
 
         init_carry = (
             anchor_ob,
-            jnp.zeros((batch_size,), dtype=jnp.float32),
-            jnp.ones((batch_size,), dtype=jnp.float32),
             jnp.ones((batch_size,), dtype=jnp.float32),
             jnp.zeros((batch_size,), dtype=jnp.float32),
             rng,
