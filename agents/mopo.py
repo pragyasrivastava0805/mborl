@@ -159,11 +159,10 @@ class MOPOAgent(flax.struct.PyTreeNode):
         target_q = batch['rewards'] + self.config['discount'] * batch['masks'] * next_q
         
         # Clip target Q values to the valid range.
-        if batch['value_goals'] is not None:
-            if self.config['gc_negative']:
-                target_q = jnp.clip(target_q, -1 / (1 - self.config['discount']), 0)
-            else:
-                target_q = jnp.clip(target_q, 0, 1)
+        if self.config['gc_negative']:
+            target_q = jnp.clip(target_q, -1 / (1 - self.config['discount']), 0)
+        elif batch['value_goals'] is not None:
+            target_q = jnp.clip(target_q, 0, 1)
         if self.config['value_loss'] == 'squared':
             q = self.network.select('critic')(
                 batch['observations'], goals=batch['value_goals'], actions=batch['actions'], params=grad_params

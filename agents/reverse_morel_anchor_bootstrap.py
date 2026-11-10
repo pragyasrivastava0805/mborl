@@ -8,31 +8,28 @@ import jax.numpy as jnp
 import ml_collections
 import optax
 
-from agents.mopo import get_config as get_mopo_config
 from utils.flax_utils import ModuleDict, TrainState, nonpytree_field
-from utils.networks import Dynamics, GCActor, GCValue, LogParam
+from utils.networks import Dynamics, GCActor, GCValue
 
 sg = lambda x: jax.lax.stop_gradient(x)
 
 
 class ReverseMOReLAnchorBootstrapAgent(flax.struct.PyTreeNode):
-    """Reverse-MoREL-Anchor-Bootstrap: All Synthetic States Bootstrap Directly on Dataset Anchor State s_anchor.
+    """Reverse-MoREL-Anchor-Bootstrap + IQL: USAD-Truncated Reverse Rollouts Where ALL Synthetic Steps Bootstrap on s_anchor in D_real Using IQL.
 
-    Extends Reverse-MoREL (`agents/reverse_morel.py`) so that for EVERY reverse rollout step
-    k in {1, ..., H}, the bootstrap target `next_observations` is the real dataset anchor state
-    `s_anchor = batch['next_observations'] in D_real` (rather than the 1-step intermediate synthetic
-    state `s_tilde_{t+H-k+1}` for k >= 2):
-      - For each backward step k in {1, ..., H} from `s_anchor in D_real`:
-          * Accumulate the k-step discounted return:
-                R^{(k)} = sum_{m=0}^{k-1} gamma^m * r_hat_{t+H-k+m}
-          * Accumulate the k-step survival discount:
-                M^{(k)} = gamma^{k-1} * prod_{m=1}^k (1 - success_m)
-          * Emit `(observations = s_tilde_{t+H-k}, actions = a_tilde_{t+H-k}, rewards = R^{(k)},
-                   masks = M^{(k)}, next_observations = s_anchor)`.
-      - Consequently, in `critic_loss`, the Bellman target for EVERY synthetic state k = 1..H is:
-            y_k = R^{(k)} + gamma^k * prod_{m=1}^k (1 - success_m) * Q_{theta_bar}(s_anchor, pi_theta(s_anchor)),
-        guaranteeing 100% of synthetic states bootstrap directly on `s_anchor in D_real` and 0% query
-        the critic on intermediate synthetic states.
+    Combines MoREL's Unknown State-Action Detector (USAD, Kidambi et al., 2020) uncertainty truncation on reverse model
+    rollouts with multi-step anchor bootstrapping into s_anchor in D_real and Implicit Q-Learning (IQL, Kostrikov et al., 2022):
+      - In 1-step `ReverseMOReLAgent` (`agents/reverse_morel.py`), backward step k=1 transitions into
+        `s_anchor in D_real`, while steps k = 2..H transition 1 step into synthetic predecessor states `s_hat_{t+H-k+1}`.
+      - In `ReverseMOReLAnchorBootstrapAgent` (`agents/reverse_morel_anchor_bootstrap.py`), EVERY backward step
+        k in {1, ..., H} accumulates the k-step discounted rollout return
+          R^(k) = r_hat^(k) + gamma * mask^(k) * R^(k-1)
+        and k-step survival discount
+          M^(k) = gamma^(k-1) * prod_{m=1}^k mask^(m),
+        and sets `'next_observations': anchor_ob` (`s_anchor in D_real`) for ALL k = 1..H!
+      - Consequently, 100% of synthetic transitions evaluate the IQL target value network `V_psi(s_anchor)`
+        exclusively on real dataset states `s_anchor in D_real`, while Step 3 uses exact IQL (`value_loss`,
+        `critic_loss`, and `actor_loss` via `ddpgbc` or `awr`) on `D_real U D_model`.
     """
 
     rng: Any
@@ -47,6 +44,12 @@ class ReverseMOReLAnchorBootstrapAgent(flax.struct.PyTreeNode):
         log_pred = jax.nn.log_sigmoid(pred_logit)
         log_not_pred = jax.nn.log_sigmoid(-pred_logit)
         return -(log_pred * target + log_not_pred * (1 - target))
+
+    @staticmethod
+    def expectile_loss(adv, diff, expectile):
+        """Compute the IQL expectile loss."""
+        weight = jnp.where(adv >= 0, expectile, (1 - expectile))
+        return weight * (diff**2)
 
     # ------------------------------------------------------------------ #
     # Step 1: Reverse model pretraining & USAD calibration
@@ -137,19 +140,20 @@ class ReverseMOReLAnchorBootstrapAgent(flax.struct.PyTreeNode):
         return prev_obs[member, jnp.arange(prev_obs.shape[1])]
 
     # ------------------------------------------------------------------ #
-    # Step 2: All-k Anchor-Direct USAD-Truncated Reverse Rollouts
+    # Step 2: Anchor-Bootstrapped USAD-Truncated Reverse Rollouts
     # ------------------------------------------------------------------ #
 
     @jax.jit
     def rollout(self, batch, rng):
-        """Perform dataset-anchored reverse rollouts where ALL k=1..H states bootstrap directly on s_anchor."""
+        """Perform dataset-anchored reverse rollouts where ALL k=1..H steps bootstrap directly on s_anchor in D_real."""
         H = self.config['rollout_steps']
+        # Anchor step 0 on real dataset states s_anchor in D_real
         anchor_ob = batch['next_observations']
         batch_size = anchor_ob.shape[0]
         value_goals = batch['value_goals'] if 'value_goals' in batch else None
 
         def reverse_rollout_step(carry, _):
-            cur_next_ob, cum_return, cum_discount, alive, halted, rng = carry
+            cur_next_ob, alive, halted, cum_reward, cum_discount, rng = carry
             rng, action_rng, dyn_rng = jax.random.split(rng, 3)
 
             rev_act_dist = self.model.select('reverse_actor')(cur_next_ob, goals=value_goals)
@@ -164,41 +168,38 @@ class ReverseMOReLAnchorBootstrapAgent(flax.struct.PyTreeNode):
             succ_logit = self.model.select('success')(prev_ob, value_goals, rev_action)
             success = (jax.nn.sigmoid(succ_logit) > 0.5).astype(jnp.float32)
             if value_goals is not None:
-                step_rewards = success - (1.0 if self.config['gc_negative'] else 0.0)
+                step_reward = success - (1.0 if self.config['gc_negative'] else 0.0)
             else:
-                step_rewards = self.model.select('reward')(prev_ob, None, rev_action)
+                step_reward = self.model.select('reward')(prev_ob, None, rev_action)
+                if self.config['gc_negative']:
+                    step_reward = jnp.clip(step_reward, -1.0, 0.0)
 
             step_mask = 1.0 - success
-            new_cum_return = jnp.where(
-                new_halted > 0.5,
-                cum_return,
-                step_rewards + self.config['discount'] * step_mask * cum_return,
-            )
-            anchor_mask = step_mask * cum_discount
-            new_cum_discount = jnp.where(
-                new_halted > 0.5,
-                cum_discount,
-                self.config['discount'] * anchor_mask,
-            )
             rollout_valid = alive * (1.0 - new_halted)
-            next_alive = rollout_valid
+            next_alive = rollout_valid * step_mask
 
-            return (prev_ob, new_cum_return, new_cum_discount, next_alive, new_halted, rng), {
+            # k-step discounted return R^(k) and survival discount M^(k) from prev_ob to s_anchor in D_real:
+            # critic_loss computes: R^(k) + discount * M^(k) * V(s_anchor)
+            new_cum_reward = step_reward + self.config['discount'] * step_mask * cum_reward
+            anchor_mask = step_mask * cum_discount
+            next_cum_discount = self.config['discount'] * anchor_mask
+
+            return (prev_ob, next_alive, new_halted, new_cum_reward, next_cum_discount, rng), {
                 'observations': prev_ob,
                 'actions': rev_action,
                 'next_observations': anchor_ob,
                 'step_next_observations': cur_next_ob,
-                'rewards': new_cum_return,
+                'rewards': new_cum_reward,
                 'masks': anchor_mask,
                 'rollout_valid': rollout_valid,
             }
 
         init_carry = (
             anchor_ob,
-            jnp.zeros((batch_size,), dtype=jnp.float32),
-            jnp.ones((batch_size,), dtype=jnp.float32),
             jnp.ones((batch_size,), dtype=jnp.float32),
             jnp.zeros((batch_size,), dtype=jnp.float32),
+            jnp.zeros((batch_size,), dtype=jnp.float32),
+            jnp.ones((batch_size,), dtype=jnp.float32),
             rng,
         )
         _, rollout_data = jax.lax.scan(reverse_rollout_step, init_carry, None, length=H)
@@ -210,7 +211,7 @@ class ReverseMOReLAnchorBootstrapAgent(flax.struct.PyTreeNode):
         return {k: v.reshape((H * batch_size,) + v.shape[2:]) for k, v in rollout_data.items()}
 
     # ------------------------------------------------------------------ #
-    # Step 3: Policy optimization on Real + Anchor-Bootstrapped Rollouts
+    # Step 3: Exact IQL Policy Optimization on D_real U D_model
     # ------------------------------------------------------------------ #
 
     def preprocess(self, real_batch, fake_batch):
@@ -231,72 +232,113 @@ class ReverseMOReLAnchorBootstrapAgent(flax.struct.PyTreeNode):
             batch['actor_goals'] = jnp.concatenate([real_batch['actor_goals'], fake_batch['actor_goals']], axis=0)
         return batch
 
-    def critic_loss(self, batch, grad_params, rng):
-        rng, sample_rng = jax.random.split(rng)
-        next_dist = self.network.select('actor')(batch['next_observations'], goals=batch['value_goals'])
-        next_actions, _ = next_dist.sample_and_log_prob(seed=sample_rng)
+    def value_loss(self, batch, grad_params):
+        """Compute the exact IQL expectile value loss on D_real U D_model."""
+        value_goals = batch.get('value_goals', None)
+        q1, q2 = self.network.select('target_critic')(batch['observations'], value_goals, batch['actions'])
+        q = jnp.minimum(q1, q2)
+        v = self.network.select('value')(batch['observations'], value_goals, params=grad_params)
+        value_loss = self.expectile_loss(q - v, q - v, self.config['expectile']).mean()
 
-        next_qs = self.network.select('target_critic')(
-            batch['next_observations'], goals=batch['value_goals'], actions=next_actions
+        return value_loss, {
+            'value_loss': value_loss,
+            'v_mean': v.mean(),
+            'v_max': v.max(),
+            'v_min': v.min(),
+        }
+
+    def critic_loss(self, batch, grad_params):
+        """Compute the IQL critic loss bootstrapping from V(s_anchor) on synthetic states and V(s') on real states."""
+        value_goals = batch.get('value_goals', None)
+        next_v = self.network.select('value')(batch['next_observations'], value_goals)
+        q_target = batch['rewards'] + self.config['discount'] * batch['masks'] * next_v
+        if self.config['gc_negative']:
+            q_target = jnp.clip(q_target, -1.0 / (1.0 - self.config['discount']), 0.0)
+        q_target = sg(q_target)
+
+        q1, q2 = self.network.select('critic')(
+            batch['observations'], value_goals, batch['actions'], params=grad_params
         )
-        next_q = next_qs.min(axis=0) if self.config['q_agg'] == 'min' else next_qs.mean(axis=0)
-        target_q = batch['rewards'] + self.config['discount'] * batch['masks'] * next_q
+        critic_loss = ((q1 - q_target) ** 2 + (q2 - q_target) ** 2).mean()
 
-        if batch['value_goals'] is not None:
-            if self.config['gc_negative']:
-                target_q = jnp.clip(target_q, -1 / (1 - self.config['discount']), 0)
-            else:
-                target_q = jnp.clip(target_q, 0, 1)
-
-        q = self.network.select('critic')(
-            batch['observations'], goals=batch['value_goals'], actions=batch['actions'], params=grad_params
-        )
-        critic_loss = jnp.square(q - sg(target_q)).mean()
         return critic_loss, {
             'critic_loss': critic_loss,
-            'q_mean': q.mean(),
-            'q_max': q.max(),
-            'q_min': q.min(),
+            'q_mean': q_target.mean(),
+            'q_max': q_target.max(),
+            'q_min': q_target.min(),
         }
 
-    def actor_loss(self, batch, grad_params, rng):
-        dist = self.network.select('actor')(batch['observations'], goals=batch['actor_goals'], params=grad_params)
-        actions, log_probs = dist.sample_and_log_prob(seed=rng)
+    def actor_loss(self, batch, grad_params, rng=None):
+        """Compute the exact IQL actor loss (AWR or DDPG+BC)."""
+        actor_goals = batch.get('actor_goals', None)
+        if self.config['actor_loss'] == 'awr':
+            v = self.network.select('value')(batch['observations'], actor_goals)
+            q1, q2 = self.network.select('critic')(batch['observations'], actor_goals, batch['actions'])
+            q = jnp.minimum(q1, q2)
+            adv = q - v
 
-        qs = self.network.select('critic')(batch['observations'], batch['actor_goals'], actions)
-        q = jnp.mean(qs, axis=0)
-        actor_loss = (log_probs * self.network.select('lam')() - q).mean()
+            exp_a = jnp.exp(adv * self.config['alpha'])
+            exp_a = jnp.minimum(exp_a, 100.0)
 
-        lam = self.network.select('lam')(params=grad_params)
-        entropy = -sg(log_probs).mean()
-        lam_loss = (lam * (entropy - self.config['target_entropy'])).mean()
+            dist = self.network.select('actor')(batch['observations'], actor_goals, params=grad_params)
+            log_prob = dist.log_prob(batch['actions'])
+            actor_loss = -(exp_a * log_prob).mean()
 
-        total_loss = actor_loss + lam_loss
-        action_std = dist._distribution.stddev().mean() if self.config['tanh_squash'] else dist.stddev().mean()
-        return total_loss, {
-            'total_loss': total_loss,
-            'actor_loss': actor_loss,
-            'lam_loss': lam_loss,
-            'lam': lam,
-            'entropy': entropy,
-            'std': action_std,
-            'q': q.mean(),
-        }
+            return actor_loss, {
+                'actor_loss': actor_loss,
+                'adv': adv.mean(),
+                'bc_log_prob': log_prob.mean(),
+                'mse': jnp.mean((dist.mode() - batch['actions']) ** 2),
+                'std': jnp.mean(dist.scale_diag),
+            }
+        elif self.config['actor_loss'] == 'ddpgbc':
+            dist = self.network.select('actor')(batch['observations'], actor_goals, params=grad_params)
+            if self.config['const_std']:
+                q_actions = jnp.clip(dist.mode(), -1, 1)
+            else:
+                q_actions = jnp.clip(dist.sample(seed=rng), -1, 1)
+            q1, q2 = self.network.select('critic')(batch['observations'], actor_goals, q_actions)
+            q = jnp.minimum(q1, q2)
+
+            q_loss = -q.mean() / jax.lax.stop_gradient(jnp.abs(q).mean() + 1e-6)
+            log_prob = dist.log_prob(batch['actions'])
+            bc_loss = -(self.config['alpha'] * log_prob).mean()
+            actor_loss = q_loss + bc_loss
+
+            return actor_loss, {
+                'actor_loss': actor_loss,
+                'q_loss': q_loss,
+                'bc_loss': bc_loss,
+                'q_mean': q.mean(),
+                'q_abs_mean': jnp.abs(q).mean(),
+                'bc_log_prob': log_prob.mean(),
+                'mse': jnp.mean((dist.mode() - batch['actions']) ** 2),
+                'std': jnp.mean(dist.scale_diag),
+            }
+        else:
+            raise ValueError(f'Unsupported actor loss: {self.config["actor_loss"]}')
 
     @jax.jit
     def total_loss(self, real_batch, fake_batch, grad_params, rng=None):
         info = {}
         rng = rng if rng is not None else self.rng
-        actor_rng, critic_rng = jax.random.split(rng)
 
         batch = self.preprocess(real_batch, fake_batch)
-        critic_loss, critic_info = self.critic_loss(batch, grad_params, critic_rng)
-        info.update({f'critic/{k}': v for k, v in critic_info.items()})
 
+        value_loss, value_info = self.value_loss(batch, grad_params)
+        for k, v in value_info.items():
+            info[f'value/{k}'] = v
+
+        critic_loss, critic_info = self.critic_loss(batch, grad_params)
+        for k, v in critic_info.items():
+            info[f'critic/{k}'] = v
+
+        rng, actor_rng = jax.random.split(rng)
         actor_loss, actor_info = self.actor_loss(batch, grad_params, actor_rng)
-        info.update({f'actor/{k}': v for k, v in actor_info.items()})
+        for k, v in actor_info.items():
+            info[f'actor/{k}'] = v
 
-        return critic_loss + actor_loss, info
+        return value_loss + critic_loss + actor_loss, info
 
     def target_update(self, network, module_name):
         new_target_params = jax.tree_util.tree_map(
@@ -340,28 +382,28 @@ class ReverseMOReLAnchorBootstrapAgent(flax.struct.PyTreeNode):
         ob_dim = ex_observations.shape[-1]
         action_dim = ex_actions.shape[-1]
 
-        if config['target_entropy'] is None:
-            config['target_entropy'] = -config['target_entropy_multiplier'] * action_dim
-
+        value_def = GCValue(
+            hidden_dims=config['value_hidden_dims'],
+            layer_norm=config['layer_norm'],
+            num_ensembles=1,
+        )
         critic_def = GCValue(
             hidden_dims=config['value_hidden_dims'],
             layer_norm=config['layer_norm'],
-            num_ensembles=config['num_qs'],
+            num_ensembles=2,
         )
         actor_def = GCActor(
             hidden_dims=config['actor_hidden_dims'],
             action_dim=action_dim,
             layer_norm=config['layer_norm'],
-            tanh_squash=config['tanh_squash'],
-            state_dependent_std=config['state_dependent_std'],
-            const_std=False,
-            final_fc_init_scale=config['actor_fc_scale'],
+            state_dependent_std=False,
+            const_std=config['const_std'],
         )
         network_info = dict(
+            value=(value_def, (ex_observations, ex_goals)),
             critic=(critic_def, (ex_observations, ex_goals, ex_actions)),
             target_critic=(copy.deepcopy(critic_def), (ex_observations, ex_goals, ex_actions)),
             actor=(actor_def, (ex_observations, ex_goals)),
-            lam=(LogParam(), ()),
         )
         network_def = ModuleDict({k: v[0] for k, v in network_info.items()})
         network_params = network_def.init(init_rng, **{k: v[1] for k, v in network_info.items()})['params']
@@ -376,13 +418,13 @@ class ReverseMOReLAnchorBootstrapAgent(flax.struct.PyTreeNode):
             stochastic=True,
         )
         reverse_actor_def = GCActor(
-            hidden_dims=config['actor_hidden_dims'],
+            hidden_dims=config['dynamics_hidden_dims'],
             action_dim=action_dim,
             layer_norm=config['layer_norm'],
             tanh_squash=False,
-            state_dependent_std=config['state_dependent_std'],
+            state_dependent_std=True,
             const_std=False,
-            final_fc_init_scale=config['actor_fc_scale'],
+            final_fc_init_scale=0.01,
         )
         success_def = GCValue(
             hidden_dims=config['dynamics_hidden_dims'],
@@ -420,14 +462,33 @@ class ReverseMOReLAnchorBootstrapAgent(flax.struct.PyTreeNode):
 
 
 def get_config():
-    config = get_mopo_config()
-    config.agent_name = 'reverse_morel_anchor_bootstrap'
-    config.beta = 0.0
-    config.num_elites = 5
-    config.model_train_steps = 100000
-    config.model_holdout_size = 1000
-    config.morel_thresh = 0.5
-    config.morel_thresh_std_mult = 1.5
-    config.auto_calibrate_thresh = True
-    config.dataset_class = 'CDataset'
+    config = ml_collections.ConfigDict(
+        dict(
+            agent_name='reverse_morel_anchor_bootstrap',
+            lr=3e-4,
+            batch_size=1024,
+            actor_hidden_dims=(512, 512, 512),
+            value_hidden_dims=(512, 512, 512),
+            dynamics_hidden_dims=(512, 512, 512),
+            layer_norm=True,
+            discount=0.99,
+            tau=0.005,
+            expectile=0.9,
+            actor_loss='ddpgbc',
+            alpha=0.003,
+            const_std=True,
+            num_dynamics=7,
+            num_elites=5,
+            model_train_steps=100000,
+            model_holdout_size=1000,
+            rollout_steps=5,
+            morel_thresh=0.5,
+            morel_thresh_std_mult=1.5,
+            auto_calibrate_thresh=True,
+            ob_dim=ml_collections.config_dict.placeholder(int),
+            action_dim=ml_collections.config_dict.placeholder(int),
+            dataset_class='CDataset',
+            gc_negative=True,
+        )
+    )
     return config

@@ -32,6 +32,39 @@ class Identity(nn.Module):
         return x
 
 
+class LengthNormalize(nn.Module):
+    """Length normalization layer (Park et al., HIQL / OGBench)."""
+
+    @nn.compact
+    def __call__(self, x):
+        return x / jnp.linalg.norm(x, axis=-1, keepdims=True) * jnp.sqrt(x.shape[-1])
+
+
+class GCEncoder(nn.Module):
+    """Helper module to handle inputs to goal-conditioned networks (OGBench reference)."""
+
+    state_encoder: nn.Module = None
+    goal_encoder: nn.Module = None
+    concat_encoder: nn.Module = None
+
+    @nn.compact
+    def __call__(self, observations, goals=None, goal_encoded=False):
+        reps = []
+        if self.state_encoder is not None:
+            reps.append(self.state_encoder(observations))
+        if goals is not None:
+            if goal_encoded:
+                assert self.goal_encoder is None or self.concat_encoder is None
+                reps.append(goals)
+            else:
+                if self.goal_encoder is not None:
+                    reps.append(self.goal_encoder(goals))
+                if self.concat_encoder is not None:
+                    reps.append(self.concat_encoder(jnp.concatenate([observations, goals], axis=-1)))
+        reps = jnp.concatenate(reps, axis=-1)
+        return reps
+
+
 class MLP(nn.Module):
     """Multi-layer perceptron (MLP).
 
@@ -332,11 +365,14 @@ class GCValue(nn.Module):
     layer_norm: bool = True
     num_ensembles: int = 2
     encoder: nn.Module = None
+    gc_encoder: nn.Module = None
+    ensemble: Optional[bool] = None
 
     def setup(self):
         mlp_class = self.mlp_class
-        if self.num_ensembles > 1:
-            mlp_class = ensemblize(mlp_class, self.num_ensembles)
+        num_ens = (2 if self.ensemble else 1) if self.ensemble is not None else self.num_ensembles
+        if num_ens > 1:
+            mlp_class = ensemblize(mlp_class, num_ens)
         output_dim = self.output_dim if self.output_dim is not None else 1
         value_net = mlp_class((*self.hidden_dims, output_dim), activate_final=False, layer_norm=self.layer_norm)
 
@@ -350,8 +386,9 @@ class GCValue(nn.Module):
             goals: Goals (optional).
             actions: Actions (optional).
         """
-
-        if self.encoder is not None:
+        if self.gc_encoder is not None:
+            inputs = [self.gc_encoder(observations, goals)]
+        elif self.encoder is not None:
             if goals is None:
                 inputs = [self.encoder(observations)]
             else:
@@ -369,6 +406,133 @@ class GCValue(nn.Module):
             v = v.squeeze(-1)
 
         return v
+
+
+class GCBilinearValue(nn.Module):
+    """Goal-conditioned bilinear value/critic function (CRL, Eysenbach et al., 2022; OGBench reference)."""
+
+    hidden_dims: Sequence[int]
+    latent_dim: int
+    mlp_class: Any = MLP
+    layer_norm: bool = True
+    ensemble: bool = True
+    value_exp: bool = False
+    state_encoder: nn.Module = None
+    goal_encoder: nn.Module = None
+
+    def setup(self) -> None:
+        mlp_class = self.mlp_class
+        if self.ensemble:
+            mlp_class = ensemblize(mlp_class, 2)
+
+        self.phi = mlp_class((*self.hidden_dims, self.latent_dim), activate_final=False, layer_norm=self.layer_norm)
+        self.psi = mlp_class((*self.hidden_dims, self.latent_dim), activate_final=False, layer_norm=self.layer_norm)
+
+    def __call__(self, observations, goals, actions=None, info=False):
+        if self.state_encoder is not None:
+            observations = self.state_encoder(observations)
+        if self.goal_encoder is not None:
+            goals = self.goal_encoder(goals)
+
+        if actions is None:
+            phi_inputs = observations
+        else:
+            phi_inputs = jnp.concatenate([observations, actions], axis=-1)
+
+        phi = self.phi(phi_inputs)
+        psi = self.psi(goals)
+
+        v = (phi * psi / jnp.sqrt(self.latent_dim)).sum(axis=-1)
+
+        if self.value_exp:
+            v = jnp.exp(v)
+
+        if info:
+            return v, phi, psi
+        else:
+            return v
+
+
+class GCMRNValue(nn.Module):
+    """Metric residual network (MRN) value function (OGBench reference)."""
+
+    hidden_dims: Sequence[int]
+    latent_dim: int
+    layer_norm: bool = True
+    encoder: nn.Module = None
+
+    def setup(self):
+        self.phi = MLP((*self.hidden_dims, self.latent_dim), activate_final=False, layer_norm=self.layer_norm)
+
+    def __call__(self, observations, goals, is_phi=False, info=False):
+        if is_phi:
+            phi_s = observations
+            phi_g = goals
+        else:
+            if self.encoder is not None:
+                observations = self.encoder(observations)
+                goals = self.encoder(goals)
+            phi_s = self.phi(observations)
+            phi_g = self.phi(goals)
+
+        sym_s = phi_s[..., : self.latent_dim // 2]
+        sym_g = phi_g[..., : self.latent_dim // 2]
+        asym_s = phi_s[..., self.latent_dim // 2 :]
+        asym_g = phi_g[..., self.latent_dim // 2 :]
+        squared_dist = ((sym_s - sym_g) ** 2).sum(axis=-1)
+        quasi = jax.nn.relu((asym_s - asym_g).max(axis=-1))
+        v = jnp.sqrt(jnp.maximum(squared_dist, 1e-12)) + quasi
+
+        if info:
+            return v, phi_s, phi_g
+        else:
+            return v
+
+
+class GCIQEValue(nn.Module):
+    """Interval quasimetric embedding (IQE) value function (QRL, Wang et al., 2023; OGBench reference)."""
+
+    hidden_dims: Sequence[int]
+    latent_dim: int
+    dim_per_component: int
+    layer_norm: bool = True
+    encoder: nn.Module = None
+
+    def setup(self):
+        self.phi = MLP((*self.hidden_dims, self.latent_dim), activate_final=False, layer_norm=self.layer_norm)
+        self.alpha = Param()
+
+    def __call__(self, observations, goals, is_phi=False, info=False):
+        alpha = jax.nn.sigmoid(self.alpha())
+        if is_phi:
+            phi_s = observations
+            phi_g = goals
+        else:
+            if self.encoder is not None:
+                observations = self.encoder(observations)
+                goals = self.encoder(goals)
+            phi_s = self.phi(observations)
+            phi_g = self.phi(goals)
+
+        x = jnp.reshape(phi_s, (*phi_s.shape[:-1], -1, self.dim_per_component))
+        y = jnp.reshape(phi_g, (*phi_g.shape[:-1], -1, self.dim_per_component))
+        valid = x < y
+        xy = jnp.concatenate(jnp.broadcast_arrays(x, y), axis=-1)
+        ixy = xy.argsort(axis=-1)
+        sxy = jnp.take_along_axis(xy, ixy, axis=-1)
+        neg_inc_copies = jnp.take_along_axis(valid, ixy % self.dim_per_component, axis=-1) * jnp.where(
+            ixy < self.dim_per_component, -1, 1
+        )
+        neg_inp_copies = jnp.cumsum(neg_inc_copies, axis=-1)
+        neg_f = -1.0 * (neg_inp_copies < 0)
+        neg_incf = jnp.concatenate([neg_f[..., :1], neg_f[..., 1:] - neg_f[..., :-1]], axis=-1)
+        components = (sxy * neg_incf).sum(axis=-1)
+        v = alpha * components.mean(axis=-1) + (1 - alpha) * components.max(axis=-1)
+
+        if info:
+            return v, phi_s, phi_g
+        else:
+            return v
 
 class ActorVectorField(nn.Module):
     """Actor vector field for flow policies.

@@ -128,6 +128,45 @@ def build_command(args, baseline, env_name, dataset_dir, seed, job_id):
     elif baseline in ('iql', 'cql', 'rebrac'):
         flags.append(f'--agent.dataset_class={"CDataset" if is_singletask else "GCDataset"}')
 
+    # Environment-specific official OGBench hyperparameters (from seohongpark/ogbench/impls/hyperparameters.sh)
+    is_pointmaze = 'pointmaze' in env_name
+    is_antmaze = 'antmaze' in env_name
+    is_humanoidmaze = 'humanoidmaze' in env_name
+
+    if baseline in ('gciql', 'iql', 'nstep_iql', 'nstep_iql_n5', 'nstep_iql_n15', 'reverse_morel', 'reverse_morel_anchor_bootstrap'):
+        if is_pointmaze:
+            flags.extend(['--agent.alpha=0.003', '--agent.discount=0.99'])
+        elif is_antmaze:
+            flags.extend(['--agent.alpha=0.3', '--agent.discount=0.99'])
+        elif is_humanoidmaze:
+            flags.extend(['--agent.alpha=0.1', '--agent.discount=0.995'])
+    elif baseline == 'qrl':
+        if is_pointmaze:
+            flags.extend(['--agent.alpha=0.0003', '--agent.discount=0.99'])
+        elif is_antmaze:
+            flags.extend(['--agent.alpha=0.003', '--agent.discount=0.99'])
+        elif is_humanoidmaze:
+            flags.extend(['--agent.alpha=0.001', '--agent.discount=0.995'])
+    elif baseline == 'crl':
+        if is_pointmaze:
+            flags.extend(['--agent.alpha=0.03', '--agent.discount=0.99'])
+        elif is_antmaze:
+            flags.extend(['--agent.alpha=0.1', '--agent.discount=0.99'])
+        elif is_humanoidmaze:
+            flags.extend(['--agent.alpha=0.1', '--agent.discount=0.995'])
+    elif baseline == 'hiql':
+        if is_pointmaze or is_antmaze:
+            flags.extend(['--agent.high_alpha=3.0', '--agent.low_alpha=3.0', '--agent.discount=0.99'])
+        elif is_humanoidmaze:
+            flags.extend(['--agent.high_alpha=3.0', '--agent.low_alpha=3.0', '--agent.discount=0.995', '--agent.subgoal_steps=100'])
+    elif baseline == 'rebrac':
+        if is_pointmaze:
+            flags.extend(['--agent.beta_actor=0.03', '--agent.beta_critic=0.001', '--agent.discount=0.99'])
+        elif is_antmaze:
+            flags.extend(['--agent.beta_actor=0.1', '--agent.beta_critic=0.001', '--agent.discount=0.99'])
+        elif is_humanoidmaze:
+            flags.extend(['--agent.beta_actor=0.1', '--agent.beta_critic=0.001', '--agent.discount=0.995'])
+
     return 'cd {} && {} {} {}'.format(
         shlex.quote(args.repo),
         shlex.quote(args.python),

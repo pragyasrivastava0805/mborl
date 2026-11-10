@@ -36,6 +36,8 @@ class ReBRACAgent(flax.struct.PyTreeNode):
         next_q = jnp.minimum(next_q1, next_q2)
         bc_penalty = jnp.sum((next_actions - next_actions_data) ** 2, axis=-1)
         target_q = rewards + self.config['discount'] * masks * (next_q - self.config['beta_critic'] * bc_penalty)
+        if self.config.get('gc_negative', True):
+            target_q = jnp.clip(target_q, -1.0 / (1.0 - self.config['discount']), 0.0)
         target_q = sg(target_q)
 
         q1, q2 = self.network.select('critic')(obs, value_goals, actions, params=grad_params)
@@ -169,16 +171,17 @@ def get_config():
             agent_name='rebrac',
             lr=3e-4,
             batch_size=1024,
-            actor_hidden_dims=(1024, 1024, 1024, 1024),
-            value_hidden_dims=(1024, 1024, 1024, 1024),
+            actor_hidden_dims=(512, 512, 512),
+            value_hidden_dims=(512, 512, 512),
             layer_norm=True,
             discount=0.99,
             tau=0.005,
             policy_noise=0.2,
             noise_clip=0.5,
-            beta_actor=1.0,
-            beta_critic=0.01,
+            beta_actor=0.03,
+            beta_critic=0.001,
             dataset_class='CDataset',
+            gc_negative=True,
         )
     )
     return config

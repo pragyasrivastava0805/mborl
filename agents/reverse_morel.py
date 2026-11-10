@@ -8,18 +8,17 @@ import jax.numpy as jnp
 import ml_collections
 import optax
 
-from agents.mopo import get_config as get_mopo_config
 from utils.flax_utils import ModuleDict, TrainState, nonpytree_field
-from utils.networks import Dynamics, GCActor, GCValue, LogParam
+from utils.networks import Dynamics, GCActor, GCValue
 
 sg = lambda x: jax.lax.stop_gradient(x)
 
 
 class ReverseMOReLAgent(flax.struct.PyTreeNode):
-    """Reverse-MoREL: Dataset-Anchored Reverse Model Rollouts with MoREL USAD Uncertainty Truncation.
+    """Reverse-MoREL + IQL: Dataset-Anchored Reverse Model Rollouts with MoREL USAD Uncertainty Truncation and IQL Critic/Actor.
 
-    Uses the exact same Unknown State-Action Detector (USAD) ensemble discrepancy criterion as
-    MOReL (Kidambi et al., NeurIPS 2020), applied to backward rollouts anchored on D_real:
+    Combines MoREL's Unknown State-Action Detector (USAD, Kidambi et al., 2020) ensemble discrepancy stopping criterion
+    for reverse model rollouts with Implicit Q-Learning (IQL, Kostrikov et al., 2022) on D_real U D_model:
       1. Reverse world model pretraining (`update_model` & `select_elites`):
          - Train an M-member reverse dynamics ensemble `reverse_dynamics(s_{t+1}, a_t) -> s_t`
            and a reverse action sampler `reverse_actor(s_{t+1}) -> a_t` on real transitions,
@@ -31,12 +30,12 @@ class ReverseMOReLAgent(flax.struct.PyTreeNode):
          - Roll backward k = 1..H steps: sample `a_tilde ~ reverse_actor(s_cur)` and
            `s_prev ~ reverse_dynamics(s_cur, a_tilde)`, checking USAD discrepancy
            `disc(s_cur, a_tilde) = max_{i, j} || mu_i_rev(s_cur, a_tilde) - mu_j_rev(s_cur, a_tilde) ||_2`.
-         - As soon as `disc > usad_thresh` (`USAD = 1`), truncate the backward chain (`rollout_valid = 0.0`
+         - As soon as `disc > usad_thresh`, stop/truncate the backward chain (`rollout_valid = 0.0`
            for step k and all k' > k). Every surviving step 1 <= m < k is emitted in forward causal order
-           `(s_prev, a_tilde, r_hat, s_cur)` and chains forward directly into `s_anchor in D_real`
-           without a terminal HALT cliff.
-      3. Policy optimization (`update`): Train actor, critic, and entropy temperature on pooled
-         real and valid reverse-anchored transitions while `model` remains frozen.
+           `(s_prev, a_tilde, r_hat, s_cur, mask)`.
+      3. IQL policy optimization (`update` on `D_real U D_model`):
+         - Everything in Step 3 is identical to IQL (`value_loss` expectile regression on `min(Q1, Q2) - V`,
+           1-step `critic_loss` regressing `r_hat + discount * mask * V(s_cur)`, and `actor_loss` via `ddpgbc` or `awr`).
     """
 
     rng: Any
@@ -51,6 +50,12 @@ class ReverseMOReLAgent(flax.struct.PyTreeNode):
         log_pred = jax.nn.log_sigmoid(pred_logit)
         log_not_pred = jax.nn.log_sigmoid(-pred_logit)
         return -(log_pred * target + log_not_pred * (1 - target))
+
+    @staticmethod
+    def expectile_loss(adv, diff, expectile):
+        """Compute the IQL expectile loss."""
+        weight = jnp.where(adv >= 0, expectile, (1 - expectile))
+        return weight * (diff**2)
 
     # ------------------------------------------------------------------ #
     # Step 1: Reverse model pretraining & USAD calibration
@@ -70,7 +75,7 @@ class ReverseMOReLAgent(flax.struct.PyTreeNode):
         rev_act_dist = self.model.select('reverse_actor')(
             batch['next_observations'], goals=goals, params=grad_params
         )
-        rev_actor_loss = -rev_act_dist.log_prob( jnp.clip(batch['actions'], -1.0 + 1e-5, 1.0 - 1e-5) ).mean()
+        rev_actor_loss = -rev_act_dist.log_prob(jnp.clip(batch['actions'], -1.0 + 1e-5, 1.0 - 1e-5)).mean()
 
         succ_logit = self.model.select('success')(
             batch['observations'], goals, batch['actions'], params=grad_params
@@ -148,7 +153,7 @@ class ReverseMOReLAgent(flax.struct.PyTreeNode):
 
     @jax.jit
     def rollout(self, batch, rng):
-        """Perform dataset-anchored reverse rollouts with USAD truncation (Reverse-MoREL)."""
+        """Perform dataset-anchored reverse rollouts with MoREL USAD uncertainty truncation."""
         H = self.config['rollout_steps']
         # Anchor step 0 on real dataset states s_anchor in D_real
         anchor_ob = batch['next_observations']
@@ -174,6 +179,8 @@ class ReverseMOReLAgent(flax.struct.PyTreeNode):
                 rewards = success - (1.0 if self.config['gc_negative'] else 0.0)
             else:
                 rewards = self.model.select('reward')(prev_ob, None, rev_action)
+                if self.config['gc_negative']:
+                    rewards = jnp.clip(rewards, -1.0, 0.0)
 
             masks = 1.0 - success
             rollout_valid = alive * (1.0 - new_halted)
@@ -203,7 +210,7 @@ class ReverseMOReLAgent(flax.struct.PyTreeNode):
         return {k: v.reshape((H * batch_size,) + v.shape[2:]) for k, v in rollout_data.items()}
 
     # ------------------------------------------------------------------ #
-    # Step 3: Policy optimization on Real + Anchored Reverse Rollouts
+    # Step 3: Exact IQL Policy Optimization on D_real U D_model
     # ------------------------------------------------------------------ #
 
     def preprocess(self, real_batch, fake_batch):
@@ -224,72 +231,113 @@ class ReverseMOReLAgent(flax.struct.PyTreeNode):
             batch['actor_goals'] = jnp.concatenate([real_batch['actor_goals'], fake_batch['actor_goals']], axis=0)
         return batch
 
-    def critic_loss(self, batch, grad_params, rng):
-        rng, sample_rng = jax.random.split(rng)
-        next_dist = self.network.select('actor')(batch['next_observations'], goals=batch['value_goals'])
-        next_actions, _ = next_dist.sample_and_log_prob(seed=sample_rng)
+    def value_loss(self, batch, grad_params):
+        """Compute the exact IQL expectile value loss on D_real U D_model."""
+        value_goals = batch.get('value_goals', None)
+        q1, q2 = self.network.select('target_critic')(batch['observations'], value_goals, batch['actions'])
+        q = jnp.minimum(q1, q2)
+        v = self.network.select('value')(batch['observations'], value_goals, params=grad_params)
+        value_loss = self.expectile_loss(q - v, q - v, self.config['expectile']).mean()
 
-        next_qs = self.network.select('target_critic')(
-            batch['next_observations'], goals=batch['value_goals'], actions=next_actions
+        return value_loss, {
+            'value_loss': value_loss,
+            'v_mean': v.mean(),
+            'v_max': v.max(),
+            'v_min': v.min(),
+        }
+
+    def critic_loss(self, batch, grad_params):
+        """Compute the 1-step IQL critic loss bootstrapping from V(next_observations)."""
+        value_goals = batch.get('value_goals', None)
+        next_v = self.network.select('value')(batch['next_observations'], value_goals)
+        q_target = batch['rewards'] + self.config['discount'] * batch['masks'] * next_v
+        if self.config['gc_negative']:
+            q_target = jnp.clip(q_target, -1.0 / (1.0 - self.config['discount']), 0.0)
+        q_target = sg(q_target)
+
+        q1, q2 = self.network.select('critic')(
+            batch['observations'], value_goals, batch['actions'], params=grad_params
         )
-        next_q = next_qs.min(axis=0) if self.config['q_agg'] == 'min' else next_qs.mean(axis=0)
-        target_q = batch['rewards'] + self.config['discount'] * batch['masks'] * next_q
+        critic_loss = ((q1 - q_target) ** 2 + (q2 - q_target) ** 2).mean()
 
-        if batch['value_goals'] is not None:
-            if self.config['gc_negative']:
-                target_q = jnp.clip(target_q, -1 / (1 - self.config['discount']), 0)
-            else:
-                target_q = jnp.clip(target_q, 0, 1)
-
-        q = self.network.select('critic')(
-            batch['observations'], goals=batch['value_goals'], actions=batch['actions'], params=grad_params
-        )
-        critic_loss = jnp.square(q - sg(target_q)).mean()
         return critic_loss, {
             'critic_loss': critic_loss,
-            'q_mean': q.mean(),
-            'q_max': q.max(),
-            'q_min': q.min(),
+            'q_mean': q_target.mean(),
+            'q_max': q_target.max(),
+            'q_min': q_target.min(),
         }
 
-    def actor_loss(self, batch, grad_params, rng):
-        dist = self.network.select('actor')(batch['observations'], goals=batch['actor_goals'], params=grad_params)
-        actions, log_probs = dist.sample_and_log_prob(seed=rng)
+    def actor_loss(self, batch, grad_params, rng=None):
+        """Compute the exact IQL actor loss (AWR or DDPG+BC)."""
+        actor_goals = batch.get('actor_goals', None)
+        if self.config['actor_loss'] == 'awr':
+            v = self.network.select('value')(batch['observations'], actor_goals)
+            q1, q2 = self.network.select('critic')(batch['observations'], actor_goals, batch['actions'])
+            q = jnp.minimum(q1, q2)
+            adv = q - v
 
-        qs = self.network.select('critic')(batch['observations'], batch['actor_goals'], actions)
-        q = jnp.mean(qs, axis=0)
-        actor_loss = (log_probs * self.network.select('lam')() - q).mean()
+            exp_a = jnp.exp(adv * self.config['alpha'])
+            exp_a = jnp.minimum(exp_a, 100.0)
 
-        lam = self.network.select('lam')(params=grad_params)
-        entropy = -sg(log_probs).mean()
-        lam_loss = (lam * (entropy - self.config['target_entropy'])).mean()
+            dist = self.network.select('actor')(batch['observations'], actor_goals, params=grad_params)
+            log_prob = dist.log_prob(batch['actions'])
+            actor_loss = -(exp_a * log_prob).mean()
 
-        total_loss = actor_loss + lam_loss
-        action_std = dist._distribution.stddev().mean() if self.config['tanh_squash'] else dist.stddev().mean()
-        return total_loss, {
-            'total_loss': total_loss,
-            'actor_loss': actor_loss,
-            'lam_loss': lam_loss,
-            'lam': lam,
-            'entropy': entropy,
-            'std': action_std,
-            'q': q.mean(),
-        }
+            return actor_loss, {
+                'actor_loss': actor_loss,
+                'adv': adv.mean(),
+                'bc_log_prob': log_prob.mean(),
+                'mse': jnp.mean((dist.mode() - batch['actions']) ** 2),
+                'std': jnp.mean(dist.scale_diag),
+            }
+        elif self.config['actor_loss'] == 'ddpgbc':
+            dist = self.network.select('actor')(batch['observations'], actor_goals, params=grad_params)
+            if self.config['const_std']:
+                q_actions = jnp.clip(dist.mode(), -1, 1)
+            else:
+                q_actions = jnp.clip(dist.sample(seed=rng), -1, 1)
+            q1, q2 = self.network.select('critic')(batch['observations'], actor_goals, q_actions)
+            q = jnp.minimum(q1, q2)
+
+            q_loss = -q.mean() / jax.lax.stop_gradient(jnp.abs(q).mean() + 1e-6)
+            log_prob = dist.log_prob(batch['actions'])
+            bc_loss = -(self.config['alpha'] * log_prob).mean()
+            actor_loss = q_loss + bc_loss
+
+            return actor_loss, {
+                'actor_loss': actor_loss,
+                'q_loss': q_loss,
+                'bc_loss': bc_loss,
+                'q_mean': q.mean(),
+                'q_abs_mean': jnp.abs(q).mean(),
+                'bc_log_prob': log_prob.mean(),
+                'mse': jnp.mean((dist.mode() - batch['actions']) ** 2),
+                'std': jnp.mean(dist.scale_diag),
+            }
+        else:
+            raise ValueError(f'Unsupported actor loss: {self.config["actor_loss"]}')
 
     @jax.jit
     def total_loss(self, real_batch, fake_batch, grad_params, rng=None):
         info = {}
         rng = rng if rng is not None else self.rng
-        actor_rng, critic_rng = jax.random.split(rng)
 
         batch = self.preprocess(real_batch, fake_batch)
-        critic_loss, critic_info = self.critic_loss(batch, grad_params, critic_rng)
-        info.update({f'critic/{k}': v for k, v in critic_info.items()})
 
+        value_loss, value_info = self.value_loss(batch, grad_params)
+        for k, v in value_info.items():
+            info[f'value/{k}'] = v
+
+        critic_loss, critic_info = self.critic_loss(batch, grad_params)
+        for k, v in critic_info.items():
+            info[f'critic/{k}'] = v
+
+        rng, actor_rng = jax.random.split(rng)
         actor_loss, actor_info = self.actor_loss(batch, grad_params, actor_rng)
-        info.update({f'actor/{k}': v for k, v in actor_info.items()})
+        for k, v in actor_info.items():
+            info[f'actor/{k}'] = v
 
-        return critic_loss + actor_loss, info
+        return value_loss + critic_loss + actor_loss, info
 
     def target_update(self, network, module_name):
         new_target_params = jax.tree_util.tree_map(
@@ -333,28 +381,28 @@ class ReverseMOReLAgent(flax.struct.PyTreeNode):
         ob_dim = ex_observations.shape[-1]
         action_dim = ex_actions.shape[-1]
 
-        if config['target_entropy'] is None:
-            config['target_entropy'] = -config['target_entropy_multiplier'] * action_dim
-
+        value_def = GCValue(
+            hidden_dims=config['value_hidden_dims'],
+            layer_norm=config['layer_norm'],
+            num_ensembles=1,
+        )
         critic_def = GCValue(
             hidden_dims=config['value_hidden_dims'],
             layer_norm=config['layer_norm'],
-            num_ensembles=config['num_qs'],
+            num_ensembles=2,
         )
         actor_def = GCActor(
             hidden_dims=config['actor_hidden_dims'],
             action_dim=action_dim,
             layer_norm=config['layer_norm'],
-            tanh_squash=config['tanh_squash'],
-            state_dependent_std=config['state_dependent_std'],
-            const_std=False,
-            final_fc_init_scale=config['actor_fc_scale'],
+            state_dependent_std=False,
+            const_std=config['const_std'],
         )
         network_info = dict(
+            value=(value_def, (ex_observations, ex_goals)),
             critic=(critic_def, (ex_observations, ex_goals, ex_actions)),
             target_critic=(copy.deepcopy(critic_def), (ex_observations, ex_goals, ex_actions)),
             actor=(actor_def, (ex_observations, ex_goals)),
-            lam=(LogParam(), ()),
         )
         network_def = ModuleDict({k: v[0] for k, v in network_info.items()})
         network_params = network_def.init(init_rng, **{k: v[1] for k, v in network_info.items()})['params']
@@ -369,13 +417,13 @@ class ReverseMOReLAgent(flax.struct.PyTreeNode):
             stochastic=True,
         )
         reverse_actor_def = GCActor(
-            hidden_dims=config['actor_hidden_dims'],
+            hidden_dims=config['dynamics_hidden_dims'],
             action_dim=action_dim,
             layer_norm=config['layer_norm'],
             tanh_squash=False,
-            state_dependent_std=config['state_dependent_std'],
+            state_dependent_std=True,
             const_std=False,
-            final_fc_init_scale=config['actor_fc_scale'],
+            final_fc_init_scale=0.01,
         )
         success_def = GCValue(
             hidden_dims=config['dynamics_hidden_dims'],
@@ -413,14 +461,33 @@ class ReverseMOReLAgent(flax.struct.PyTreeNode):
 
 
 def get_config():
-    config = get_mopo_config()
-    config.agent_name = 'reverse_morel'
-    config.beta = 0.0
-    config.num_elites = 5
-    config.model_train_steps = 100000
-    config.model_holdout_size = 1000
-    config.morel_thresh = 0.5
-    config.morel_thresh_std_mult = 1.5
-    config.auto_calibrate_thresh = True
-    config.dataset_class = 'CDataset'
+    config = ml_collections.ConfigDict(
+        dict(
+            agent_name='reverse_morel',
+            lr=3e-4,
+            batch_size=1024,
+            actor_hidden_dims=(512, 512, 512),
+            value_hidden_dims=(512, 512, 512),
+            dynamics_hidden_dims=(512, 512, 512),
+            layer_norm=True,
+            discount=0.99,
+            tau=0.005,
+            expectile=0.9,
+            actor_loss='ddpgbc',
+            alpha=0.003,
+            const_std=True,
+            num_dynamics=7,
+            num_elites=5,
+            model_train_steps=100000,
+            model_holdout_size=1000,
+            rollout_steps=5,
+            morel_thresh=0.5,
+            morel_thresh_std_mult=1.5,
+            auto_calibrate_thresh=True,
+            ob_dim=ml_collections.config_dict.placeholder(int),
+            action_dim=ml_collections.config_dict.placeholder(int),
+            dataset_class='CDataset',
+            gc_negative=True,
+        )
+    )
     return config

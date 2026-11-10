@@ -209,11 +209,10 @@ class MOReLAgent(flax.struct.PyTreeNode):
         next_q = next_qs.min(axis=0) if self.config['q_agg'] == 'min' else next_qs.mean(axis=0)
         target_q = batch['rewards'] + self.config['discount'] * batch['masks'] * next_q
 
-        if batch['value_goals'] is not None:
-            if self.config['gc_negative']:
-                target_q = jnp.clip(target_q, -1 / (1 - self.config['discount']), 0)
-            else:
-                target_q = jnp.clip(target_q, 0, 1)
+        if self.config['gc_negative']:
+            target_q = jnp.clip(target_q, -1 / (1 - self.config['discount']), 0)
+        elif batch['value_goals'] is not None:
+            target_q = jnp.clip(target_q, 0, 1)
 
         q = self.network.select('critic')(
             batch['observations'], goals=batch['value_goals'], actions=batch['actions'], params=grad_params

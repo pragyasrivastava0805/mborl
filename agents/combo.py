@@ -229,11 +229,10 @@ class COMBOAgent(flax.struct.PyTreeNode):
         if self.config['backup_entropy']:
             next_q = next_q - self.network.select('lam')() * next_log_probs
         target_q = rewards + self.config['discount'] * masks * next_q
-        if gc:
-            if self.config['gc_negative']:
-                target_q = jnp.clip(target_q, -1 / (1 - self.config['discount']), 0)
-            else:
-                target_q = jnp.clip(target_q, 0, 1)
+        if self.config['gc_negative']:
+            target_q = jnp.clip(target_q, -1 / (1 - self.config['discount']), 0)
+        elif gc:
+            target_q = jnp.clip(target_q, 0, 1)
         target_q = sg(target_q)
 
         qs = self.network.select('critic')(obs, goals=value_goals, actions=actions, params=grad_params)

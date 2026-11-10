@@ -425,6 +425,7 @@ class HGCDataset(GCDataset):
             batch['high_actor_goals'] = self.get_observations(high_actor_goal_idxs)
             batch['high_actor_actions'] = self.get_high_actions(high_actor_next_idxs, idxs)
             batch['high_actor_next_observations'] = self.get_observations(high_actor_next_idxs)
+        batch['high_actor_targets'] = batch['high_actor_actions']
 
         # Compute low-level actor goals.
         low_actor_goal_idxs = np.minimum(idxs + actor_subgoal_steps, final_state_idxs)
@@ -638,7 +639,7 @@ class CDataset:
         self.initial_locs = np.concatenate([[0], self.terminal_locs[:-1] + 1])
         valid_idxs = []
         for i in range(len(self.initial_locs)):
-            valid_idxs.append(np.arange(self.initial_locs[i], self.terminal_locs[i] - 1))
+            valid_idxs.append(np.arange(self.initial_locs[i], self.terminal_locs[i]))
         self.valid_idxs = np.concatenate(valid_idxs)
         assert self.terminal_locs[-1] == self.size - 1
 
@@ -796,7 +797,7 @@ class NStepCDataset:
         self.initial_locs = np.concatenate([[0], self.terminal_locs[:-1] + 1])
         valid_idxs = []
         for i in range(len(self.initial_locs)):
-            valid_idxs.append(np.arange(self.initial_locs[i], self.terminal_locs[i] - 1))
+            valid_idxs.append(np.arange(self.initial_locs[i], self.terminal_locs[i]))
         self.valid_idxs = np.concatenate(valid_idxs)
         assert self.terminal_locs[-1] == self.size - 1
 
