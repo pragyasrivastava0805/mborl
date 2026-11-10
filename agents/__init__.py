@@ -15,6 +15,11 @@ from agents.mopo import MOPOAgent
 from agents.morel import MOReLAgent
 from agents.reverse_morel import ReverseMOReLAgent
 from agents.reverse_morel_anchor_bootstrap import ReverseMOReLAnchorBootstrapAgent
+from agents.forward_morel_iql import ForwardMOReLIQLAgent
+from agents.forward_morel_cql import ForwardMOReLCQLAgent
+from agents.reverse_morel_cql import ReverseMOReLCQLAgent
+from agents.forward_morel_rebrac import ForwardMOReLReBRACAgent
+from agents.reverse_morel_rebrac import ReverseMOReLReBRACAgent
 from agents.combo import COMBOAgent
 from agents.fmpc import FMPCAgent
 from agents.leq import LEQAgent
@@ -42,6 +47,11 @@ agents = dict(
     morel=MOReLAgent,
     reverse_morel=ReverseMOReLAgent,
     reverse_morel_anchor_bootstrap=ReverseMOReLAnchorBootstrapAgent,
+    forward_morel_iql=ForwardMOReLIQLAgent,
+    forward_morel_cql=ForwardMOReLCQLAgent,
+    reverse_morel_cql=ReverseMOReLCQLAgent,
+    forward_morel_rebrac=ForwardMOReLReBRACAgent,
+    reverse_morel_rebrac=ReverseMOReLReBRACAgent,
     combo=COMBOAgent,
     fmpc=FMPCAgent,
     leq=LEQAgent,

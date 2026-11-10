@@ -162,7 +162,11 @@ class ReverseMOReLAnchorBootstrapAgent(flax.struct.PyTreeNode):
 
             disc = self.compute_discrepancy(cur_next_ob, rev_action)
             unknown = (disc > self.usad_thresh).astype(jnp.float32)
-            new_halted = jnp.maximum(halted, unknown)
+            # Also truncate backward branches that backtrack closer to s_anchor than cur_next_ob
+            dist_prev = jnp.linalg.norm(raw_prev_ob - anchor_ob, axis=-1)
+            dist_cur = jnp.linalg.norm(cur_next_ob - anchor_ob, axis=-1)
+            backtracked = (dist_prev <= dist_cur + 1e-4).astype(jnp.float32)
+            new_halted = jnp.maximum(halted, jnp.maximum(unknown, backtracked))
 
             prev_ob = jnp.where(new_halted[:, None] > 0.5, cur_next_ob, raw_prev_ob)
             succ_logit = self.model.select('success')(prev_ob, value_goals, rev_action)
