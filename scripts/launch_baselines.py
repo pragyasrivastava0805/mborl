@@ -30,14 +30,14 @@ DEFAULT_DATA_ROOT = '/home/rchitale_google_com/ogbench/prepared'
 
 MODEL_BASED_AGENTS = (
     'mbpo', 'mopo', 'morel',
-    'reverse_morel', 'reverse_morel_anchor_bootstrap',
+    'reverse_morel', 'reverse_morel_anchor_bootstrap', 'reverse_rollout_high_freq',
     'forward_morel_iql', 'forward_morel_cql', 'reverse_morel_cql',
     'forward_morel_rebrac', 'reverse_morel_rebrac',
     'combo',
 )
 SINGLE_TASK_AGENTS = (
     'mbpo', 'mopo', 'morel',
-    'reverse_morel', 'reverse_morel_anchor_bootstrap',
+    'reverse_morel', 'reverse_morel_anchor_bootstrap', 'reverse_rollout_high_freq',
     'forward_morel_iql', 'forward_morel_cql', 'reverse_morel_cql',
     'forward_morel_rebrac', 'reverse_morel_rebrac',
     'combo', 'iql', 'cql', 'rebrac', 'nstep_iql', 'nstep_iql_n5', 'nstep_iql_n15',
@@ -45,7 +45,7 @@ SINGLE_TASK_AGENTS = (
 GOAL_COND_AGENTS = ('gciql', 'qrl', 'crl', 'hiql')
 ALL_BASELINES = (
     'mbpo', 'mopo', 'morel',
-    'reverse_morel', 'reverse_morel_anchor_bootstrap',
+    'reverse_morel', 'reverse_morel_anchor_bootstrap', 'reverse_rollout_high_freq',
     'forward_morel_iql', 'forward_morel_cql', 'reverse_morel_cql',
     'forward_morel_rebrac', 'reverse_morel_rebrac',
     'combo',
@@ -149,7 +149,7 @@ def build_command(args, baseline, env_name, dataset_dir, seed, job_id):
     is_antmaze = 'antmaze' in env_name
     is_humanoidmaze = 'humanoidmaze' in env_name
 
-    if baseline in ('gciql', 'iql', 'nstep_iql', 'nstep_iql_n5', 'nstep_iql_n15', 'reverse_morel', 'reverse_morel_anchor_bootstrap', 'forward_morel_iql'):
+    if baseline in ('gciql', 'iql', 'nstep_iql', 'nstep_iql_n5', 'nstep_iql_n15', 'reverse_morel', 'reverse_morel_anchor_bootstrap', 'reverse_rollout_high_freq', 'forward_morel_iql'):
         if is_pointmaze:
             flags.extend(['--agent.alpha=0.003', '--agent.discount=0.99'])
         elif is_antmaze:

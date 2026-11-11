@@ -124,6 +124,7 @@ def get_config():
     config.value_hidden_dims = (512, 512, 512)
     config.dynamics_hidden_dims = (512, 512, 512)
     config.discount = 0.99
+    config.rollout_steps = 20
     config.morel_thresh = 0.5
     config.morel_thresh_std_mult = 1.5
     config.auto_calibrate_thresh = True

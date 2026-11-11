@@ -261,7 +261,7 @@ def get_config():
             num_elites=5,
             model_train_steps=100000,
             model_holdout_size=1000,
-            rollout_steps=5,
+            rollout_steps=20,
             morel_thresh=0.5,
             morel_thresh_std_mult=1.5,
             auto_calibrate_thresh=True,

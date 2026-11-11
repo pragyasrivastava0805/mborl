@@ -12,8 +12,9 @@ import sys
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ORDERED_BASELINES = [
+    "reverse_rollout_high_freq",
     "reverse_morel_anchor_bootstrap", "reverse_morel", "forward_morel_iql", "morel",
-    "iql", "nstep_iql_n5", "nstep_iql_n15", "gciql", "qrl", "crl", "hiql",
+    "iql", "nstep_iql_n5", "nstep_iql_n15",
     "reverse_morel_cql", "forward_morel_cql", "cql",
     "reverse_morel_rebrac", "forward_morel_rebrac", "rebrac",
     "mbpo", "mopo", "combo",

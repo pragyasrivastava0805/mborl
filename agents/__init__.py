@@ -15,6 +15,7 @@ from agents.mopo import MOPOAgent
 from agents.morel import MOReLAgent
 from agents.reverse_morel import ReverseMOReLAgent
 from agents.reverse_morel_anchor_bootstrap import ReverseMOReLAnchorBootstrapAgent
+from agents.reverse_rollout_high_freq import ReverseRolloutHighFreqAgent
 from agents.forward_morel_iql import ForwardMOReLIQLAgent
 from agents.forward_morel_cql import ForwardMOReLCQLAgent
 from agents.reverse_morel_cql import ReverseMOReLCQLAgent
@@ -47,6 +48,7 @@ agents = dict(
     morel=MOReLAgent,
     reverse_morel=ReverseMOReLAgent,
     reverse_morel_anchor_bootstrap=ReverseMOReLAnchorBootstrapAgent,
+    reverse_rollout_high_freq=ReverseRolloutHighFreqAgent,
     forward_morel_iql=ForwardMOReLIQLAgent,
     forward_morel_cql=ForwardMOReLCQLAgent,
     reverse_morel_cql=ReverseMOReLCQLAgent,
