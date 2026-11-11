@@ -145,18 +145,81 @@ class ReverseRolloutHighFreqAgent(flax.struct.PyTreeNode):
         return prev_obs[member, jnp.arange(prev_obs.shape[1])]
 
     # ------------------------------------------------------------------ #
-    # Step 2: High-Frequency Hub Selection & Adaptive Rollout-Until-USAD
+    # Step 2: Conditional VAE P(s | V(s) >= t) Anchor Generation &
+    #         Adaptive Rollout-Until-USAD
     # ------------------------------------------------------------------ #
 
-    def select_high_freq_anchors(self, batch):
-        """Select the top `high_freq_quantile` highest-frequency states in `batch['next_observations']`.
+    def cvae_loss(self, real_batch, grad_params, rng):
+        """Fit Conditional VAE p_omega(s | z, c) and q_phi(z | s, c) where c = I[V_psi(s) >= t]."""
+        s = real_batch['next_observations']
+        value_goals = real_batch.get('value_goals', None)
 
-        Combines:
-          1. 2-D spatial kernel visitation frequency over `(x, y) = obs[:, :2]` on a `grid_bins x grid_bins`
-             grid with 3x3 smoothing (identifies busy corridor junctions & multi-segment hubs).
-          2. Kinematic typicality penalty over `obs[:, 2:]` (ensures selected hub anchors in 29-D AntMaze
-             and 69-D HumanoidMaze also have high-density, stable upright postures/velocities).
-        """
+        # Evaluate learned value function V_psi(s) (stop-gradient so CVAE fits density without altering V_psi)
+        v = sg(self.network.select('value')(s, value_goals))
+        thresh_t = jnp.quantile(v, self.config['cvae_value_quantile'])
+        c = (v >= thresh_t).astype(jnp.float32)[:, None]
+        cond = jnp.concatenate([c, value_goals], axis=-1) if value_goals is not None else c
+
+        post_dist = self.network.select('cvae_encoder')(s, goals=cond, params=grad_params)
+        z = post_dist.sample(seed=rng)
+        recon_dist = self.network.select('cvae_decoder')(z, goals=cond, params=grad_params)
+        s_hat = recon_dist.mode()
+
+        recon_mse = jnp.mean(jnp.square(s_hat - s), axis=-1)
+        mu_z = post_dist.loc
+        std_z = jnp.maximum(post_dist.scale_diag, 1e-5)
+        kl_div = -0.5 * jnp.sum(1.0 + 2.0 * jnp.log(std_z) - jnp.square(mu_z) - jnp.square(std_z), axis=-1)
+
+        # Upweight c=1 high-value slice so p_omega(s | z, c=1) models P(s | V(s) >= t) sharply
+        sample_weight = 1.0 + self.config['cvae_pos_weight'] * c.squeeze(-1)
+        loss = jnp.mean(sample_weight * (recon_mse + self.config['cvae_kl_weight'] * kl_div))
+        return loss, {
+            'cvae_loss': loss,
+            'cvae_recon_mse': recon_mse.mean(),
+            'cvae_kl': kl_div.mean(),
+            'cvae_val_thresh': thresh_t,
+            'cvae_pos_frac': c.mean(),
+        }
+
+    def sample_cvae_anchors(self, batch, rng):
+        """Sample starting states s_anchor ~ P(s | V(s) >= t) from the Conditional VAE p_omega(s | z, c=1)."""
+        obs = batch['next_observations']
+        batch_size, ob_dim = obs.shape
+        num_anchors = max(1, int(batch_size * float(self.config['high_freq_quantile'])))
+        value_goals = batch['value_goals'] if ('value_goals' in batch and batch['value_goals'] is not None) else None
+        actor_goals = batch['actor_goals'] if ('actor_goals' in batch and batch['actor_goals'] is not None) else None
+
+        v = self.network.select('value')(obs, value_goals)
+        top_idx = jnp.argsort(-v)[:num_anchors]
+        real_high_v_obs = obs[top_idx]
+        anchor_value_goals = value_goals[top_idx] if value_goals is not None else None
+        anchor_actor_goals = actor_goals[top_idx] if actor_goals is not None else None
+
+        # Condition strictly on c = 1 (i.e. V_psi(s) >= t)
+        c_ones = jnp.ones((num_anchors, 1), dtype=jnp.float32)
+        cond = jnp.concatenate([c_ones, anchor_value_goals], axis=-1) if anchor_value_goals is not None else c_ones
+
+        prior_rng, post_rng, mix_rng = jax.random.split(rng, 3)
+        latent_dim = int(self.config['cvae_latent_dim'])
+        z_prior = jax.random.normal(prior_rng, shape=(num_anchors, latent_dim))
+        post_dist = self.network.select('cvae_encoder')(real_high_v_obs, goals=cond)
+        z_post = post_dist.sample(seed=post_rng)
+
+        use_prior = jax.random.bernoulli(mix_rng, p=float(self.config['cvae_prior_prob']), shape=(num_anchors, 1))
+        z = jnp.where(use_prior, z_prior, z_post)
+
+        decoded_obs = self.network.select('cvae_decoder')(z, goals=cond).mode()
+        obs_min = jnp.min(obs, axis=0, keepdims=True)
+        obs_max = jnp.max(obs, axis=0, keepdims=True)
+        decoded_obs = jnp.clip(decoded_obs, obs_min, obs_max)
+
+        # Warm up V_psi(s) and the Conditional VAE for cvae_warmup_steps before switching rollout anchors to decoded CVAE states
+        warmup_steps = int(self.config.get('cvae_warmup_steps', 10000))
+        anchor_ob = jnp.where(self.network.step >= warmup_steps, decoded_obs, real_high_v_obs)
+        return anchor_ob, anchor_value_goals, anchor_actor_goals, top_idx
+
+    def select_high_freq_anchors(self, batch):
+        """Fallback spatial/kinematic hub selector when use_cvae=False."""
         obs = batch['next_observations']
         batch_size, ob_dim = obs.shape
         grid_bins = int(self.config['high_freq_grid_bins'])
@@ -171,11 +234,9 @@ class ReverseRolloutHighFreqAgent(flax.struct.PyTreeNode):
         gx, gy = coords[:, 0], coords[:, 1]
         flat_cell = gx * grid_bins + gy
 
-        # Count empirical visitation frequency per 2-D spatial cell
         counts_flat = jnp.bincount(flat_cell, length=grid_bins * grid_bins).astype(jnp.float32)
         counts_grid = counts_flat.reshape((grid_bins, grid_bins))
 
-        # Pad and apply 3x3 smoothing kernel so junction states near cell borders are scored smoothly
         padded = jnp.pad(counts_grid, ((1, 1), (1, 1)), mode='edge')
         smoothed_grid = (
             4.0 * padded[1:-1, 1:-1]
@@ -184,7 +245,6 @@ class ReverseRolloutHighFreqAgent(flax.struct.PyTreeNode):
         ) / 16.0
         spatial_freq_score = jnp.log1p(smoothed_grid[gx, gy])
 
-        # For high-dimensional locomotion (AntMaze 29-D, HumanoidMaze 69-D), penalize atypical postures/velocities
         if ob_dim > 2 and self.config['kinematic_density_weight'] > 0.0:
             rest = obs[:, 2:]
             rest_mean = jnp.mean(rest, axis=0, keepdims=True)
@@ -199,14 +259,19 @@ class ReverseRolloutHighFreqAgent(flax.struct.PyTreeNode):
 
     @jax.jit
     def rollout(self, batch, rng):
-        """Start reverse rollouts ONLY from high-frequency states and roll backward until USAD triggers."""
+        """Sample anchor states from Conditional VAE P(s | V(s) >= t) and roll backward until USAD triggers."""
         max_H = int(self.config['max_rollout_steps'])
-        top_idx = self.select_high_freq_anchors(batch)
+        rng, cvae_rng = jax.random.split(rng)
 
-        anchor_ob = batch['next_observations'][top_idx]
+        if self.config.get('use_cvae', True):
+            anchor_ob, value_goals, actor_goals, _ = self.sample_cvae_anchors(batch, cvae_rng)
+        else:
+            top_idx = self.select_high_freq_anchors(batch)
+            anchor_ob = batch['next_observations'][top_idx]
+            value_goals = batch['value_goals'][top_idx] if ('value_goals' in batch and batch['value_goals'] is not None) else None
+            actor_goals = batch['actor_goals'][top_idx] if ('actor_goals' in batch and batch['actor_goals'] is not None) else None
+
         num_anchors = anchor_ob.shape[0]
-        value_goals = batch['value_goals'][top_idx] if ('value_goals' in batch and batch['value_goals'] is not None) else None
-        actor_goals = batch['actor_goals'][top_idx] if ('actor_goals' in batch and batch['actor_goals'] is not None) else None
 
         def reverse_rollout_step(carry, _):
             cur_next_ob, prev_dist_from_anchor, alive, halted, rng = carry
@@ -218,7 +283,10 @@ class ReverseRolloutHighFreqAgent(flax.struct.PyTreeNode):
 
             # MoREL USAD stopping condition: halt trajectory as soon as ensemble discrepancy exceeds usad_thresh
             disc = self.compute_discrepancy(cur_next_ob, rev_action)
-            unknown = (disc > self.usad_thresh).astype(jnp.float32)
+            if self.config.get('use_usad', True):
+                unknown = (disc > self.usad_thresh).astype(jnp.float32)
+            else:
+                unknown = jnp.zeros_like(disc)
 
             # Optional non-backtracking check so multi-step reverse rollouts expand outward from s_anchor
             new_dist_from_anchor = jnp.linalg.norm(raw_prev_ob[:, :2] - anchor_ob[:, :2], axis=-1)
@@ -391,12 +459,16 @@ class ReverseRolloutHighFreqAgent(flax.struct.PyTreeNode):
         for k, v in critic_info.items():
             info[f'critic/{k}'] = v
 
-        rng, actor_rng = jax.random.split(rng)
+        rng, actor_rng, cvae_rng = jax.random.split(rng, 3)
         actor_loss, actor_info = self.actor_loss(batch, grad_params, actor_rng)
         for k, v in actor_info.items():
             info[f'actor/{k}'] = v
 
-        return value_loss + critic_loss + actor_loss, info
+        cvae_loss, cvae_info = self.cvae_loss(real_batch, grad_params, cvae_rng)
+        for k, v in cvae_info.items():
+            info[f'cvae/{k}'] = v
+
+        return value_loss + critic_loss + actor_loss + cvae_loss, info
 
     def target_update(self, network, module_name):
         new_target_params = jax.tree_util.tree_map(
@@ -457,11 +529,35 @@ class ReverseRolloutHighFreqAgent(flax.struct.PyTreeNode):
             state_dependent_std=False,
             const_std=config['const_std'],
         )
+        cvae_latent_dim = int(config.get('cvae_latent_dim', 16))
+        ex_c = jnp.zeros((ex_observations.shape[0], 1), dtype=jnp.float32)
+        ex_cond = jnp.concatenate([ex_c, ex_goals], axis=-1) if ex_goals is not None else ex_c
+        ex_latents = jnp.zeros((ex_observations.shape[0], cvae_latent_dim), dtype=jnp.float32)
+        cvae_encoder_def = GCActor(
+            hidden_dims=config.get('cvae_hidden_dims', (512, 512, 512)),
+            action_dim=cvae_latent_dim,
+            layer_norm=config['layer_norm'],
+            tanh_squash=False,
+            state_dependent_std=True,
+            const_std=False,
+            final_fc_init_scale=0.01,
+        )
+        cvae_decoder_def = GCActor(
+            hidden_dims=config.get('cvae_hidden_dims', (512, 512, 512)),
+            action_dim=ob_dim,
+            layer_norm=config['layer_norm'],
+            tanh_squash=False,
+            state_dependent_std=True,
+            const_std=False,
+            final_fc_init_scale=0.01,
+        )
         network_info = dict(
             value=(value_def, (ex_observations, ex_goals)),
             critic=(critic_def, (ex_observations, ex_goals, ex_actions)),
             target_critic=(copy.deepcopy(critic_def), (ex_observations, ex_goals, ex_actions)),
             actor=(actor_def, (ex_observations, ex_goals)),
+            cvae_encoder=(cvae_encoder_def, (ex_observations, ex_cond)),
+            cvae_decoder=(cvae_decoder_def, (ex_latents, ex_cond)),
         )
         network_def = ModuleDict({k: v[0] for k, v in network_info.items()})
         network_params = network_def.init(init_rng, **{k: v[1] for k, v in network_info.items()})['params']
@@ -540,9 +636,18 @@ def get_config():
             model_train_steps=100000,
             model_holdout_size=1000,
             # Adaptive rollout-until-USAD (MoREL style, no fixed H=5):
-            # top 25% high-frequency anchors x max_rollout_steps=20 = same tensor size as 100% x 5
-            rollout_steps=5,
+            # top 25% Conditional VAE P(s | V(s) >= t) anchors x max_rollout_steps=20
+            rollout_steps=20,
             max_rollout_steps=20,
+            use_usad=True,
+            use_cvae=True,
+            cvae_warmup_steps=10000,
+            cvae_latent_dim=16,
+            cvae_hidden_dims=(512, 512, 512),
+            cvae_value_quantile=0.75,
+            cvae_kl_weight=0.01,
+            cvae_pos_weight=2.0,
+            cvae_prior_prob=0.5,
             high_freq_quantile=0.25,
             high_freq_grid_bins=64,
             kinematic_density_weight=0.1,

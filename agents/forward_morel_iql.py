@@ -136,7 +136,10 @@ class ForwardMOReLIQLAgent(flax.struct.PyTreeNode):
             raw_next_ob = self.sample_dynamics(cur_ob, action, dyn_rng)
 
             disc = self.compute_discrepancy(cur_ob, action)
-            unknown = (disc > self.usad_thresh).astype(jnp.float32)
+            if self.config.get('use_usad', True):
+                unknown = (disc > self.usad_thresh).astype(jnp.float32)
+            else:
+                unknown = jnp.zeros_like(disc)
             new_halted = jnp.maximum(halted, unknown)
 
             next_ob = jnp.where(new_halted[:, None] > 0.5, cur_ob, raw_next_ob)
@@ -435,6 +438,7 @@ def get_config():
             model_train_steps=100000,
             model_holdout_size=1000,
             rollout_steps=20,
+            use_usad=True,
             morel_thresh=0.5,
             morel_thresh_std_mult=1.5,
             auto_calibrate_thresh=True,
