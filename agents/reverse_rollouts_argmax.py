@@ -133,23 +133,31 @@ class ReverseRolloutsArgmaxAgent(flax.struct.PyTreeNode):
 
     def sample_full_buffer_batch(self, train_dataset, mb_batch_size):
         """Evaluate V_pi(s) across ALL states s in the replay buffer and return the global argmax V_pi(s) batch."""
-        all_obs = train_dataset.dataset['next_observations']
-        total_n = train_dataset.size
+        ds_dict = train_dataset.dataset._dict
+        valid_idxs = getattr(train_dataset, 'valid_idxs', np.arange(train_dataset.size))
+        if 'next_observations' in ds_dict:
+            all_next_obs = ds_dict['next_observations'][valid_idxs]
+        else:
+            next_idxs = np.minimum(valid_idxs + 1, train_dataset.size - 1)
+            all_next_obs = ds_dict['observations'][next_idxs]
+
+        total_n = len(valid_idxs)
         chunk_size = 100000
         scores = []
         for start in range(0, total_n, chunk_size):
             end = min(start + chunk_size, total_n)
-            v_chunk = np.asarray(self.eval_v_pi_chunk(all_obs[start:end]))
+            v_chunk = np.asarray(self.eval_v_pi_chunk(all_next_obs[start:end]))
             scores.append(v_chunk)
         all_v = np.concatenate(scores, axis=0)
 
         top_k = max(1, int(mb_batch_size * float(self.config.get('argmax_top_fraction', 0.05))))
         if top_k < total_n:
             part_idx = np.argpartition(-all_v, top_k)[:top_k]
-            top_pool = part_idx[np.argsort(-all_v[part_idx])]
+            top_local = part_idx[np.argsort(-all_v[part_idx])]
         else:
-            top_pool = np.argsort(-all_v)
+            top_local = np.argsort(-all_v)
 
+        top_pool = valid_idxs[top_local]
         repeats = (mb_batch_size + len(top_pool) - 1) // len(top_pool)
         selected_idxs = np.tile(top_pool, repeats)[:mb_batch_size]
         return train_dataset.sample(mb_batch_size, idxs=selected_idxs)
