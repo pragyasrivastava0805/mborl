@@ -8,7 +8,7 @@ import jax.numpy as jnp
 import ml_collections
 import optax
 
-from utils.anchor_sampling import select_anchor_indices
+from utils.anchor_sampling import sample_full_buffer_anchors_generic, select_anchor_indices
 from utils.flax_utils import ModuleDict, TrainState, nonpytree_field
 from utils.networks import Dynamics, GCActor, GCValue
 
@@ -121,6 +121,15 @@ class ForwardMOReLIQLAgent(flax.struct.PyTreeNode):
     # ------------------------------------------------------------------ #
     # Step 2: USAD-Truncated Forward Rollouts (No Terminal HALT Cliff)
     # ------------------------------------------------------------------ #
+
+    @jax.jit
+    def eval_v_pi_chunk(self, obs, value_goals=None, actor_goals=None):
+        pi_act = jnp.clip(self.network.select('actor')(obs, actor_goals).mode(), -1.0, 1.0)
+        q1, q2 = self.network.select('target_critic')(obs, value_goals, pi_act)
+        return jnp.minimum(q1, q2)
+
+    def sample_full_buffer_batch(self, train_dataset, mb_batch_size):
+        return sample_full_buffer_anchors_generic(self, train_dataset, mb_batch_size, use_next_obs=False)
 
     @jax.jit
     def rollout(self, batch, rng):

@@ -9,7 +9,7 @@ import ml_collections
 import optax
 
 from agents.forward_morel_rebrac import ForwardMOReLReBRACAgent, get_config as get_fwd_rebrac_config
-from utils.anchor_sampling import select_anchor_indices
+from utils.anchor_sampling import sample_full_buffer_anchors_generic, select_anchor_indices
 from utils.flax_utils import ModuleDict, TrainState, nonpytree_field
 from utils.networks import Dynamics, GCActor, GCDeterActor, GCValue
 
@@ -68,6 +68,15 @@ class ReverseMOReLReBRACAgent(ForwardMOReLReBRACAgent):
         prev_obs = self.model.select('reverse_dynamics')(next_observations, actions).sample(seed=dyn_rng)
         member = self.elites[jax.random.randint(member_rng, (prev_obs.shape[1],), 0, self.elites.shape[0])]
         return prev_obs[member, jnp.arange(prev_obs.shape[1])]
+
+    @jax.jit
+    def eval_v_pi_chunk(self, obs, value_goals=None, actor_goals=None):
+        pi_act = jnp.clip(self.network.select('target_actor')(obs), -1.0, 1.0)
+        q1, q2 = self.network.select('target_critic')(obs, None, pi_act)
+        return jnp.minimum(q1, q2)
+
+    def sample_full_buffer_batch(self, train_dataset, mb_batch_size):
+        return sample_full_buffer_anchors_generic(self, train_dataset, mb_batch_size, use_next_obs=True)
 
     @jax.jit
     def rollout(self, batch, rng):

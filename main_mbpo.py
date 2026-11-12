@@ -202,7 +202,12 @@ def main(_):
         return buffer
 
     def sample_rollout_batch():
-        if config.get('full_buffer_argmax', False) and hasattr(agent, 'sample_full_buffer_batch'):
+        if hasattr(agent, 'sample_full_buffer_batch') and (
+            config.get('full_buffer_argmax', False)
+            or config.get('full_buffer_exp', False)
+            or config.get('full_buffer_qbeta', False)
+            or config.get('sampling_mode', 'uniform') != 'uniform'
+        ):
             return agent.sample_full_buffer_batch(train_dataset, FLAGS.mb_batch_size)
         return train_dataset.sample(FLAGS.mb_batch_size)
 

@@ -6,6 +6,7 @@ import flax
 import jax
 import jax.numpy as jnp
 import ml_collections
+import numpy as np
 import optax
 
 from utils.flax_utils import ModuleDict, TrainState, nonpytree_field
@@ -121,14 +122,65 @@ class ReverseRolloutsExpAgent(flax.struct.PyTreeNode):
         member = self.elites[jax.random.randint(member_rng, (prev_obs.shape[1],), 0, self.elites.shape[0])]
         return prev_obs[member, jnp.arange(prev_obs.shape[1])]
 
+    @jax.jit
+    def eval_v_pi_chunk(self, obs, value_goals=None, actor_goals=None):
+        """Evaluate V_pi(s) = min(Q_1(s, pi(s)), Q_2(s, pi(s))) on a chunk of replay buffer states."""
+        if self.config.get('use_q_pi', True):
+            pi_actions = jnp.clip(self.network.select('actor')(obs, actor_goals).mode(), -1.0, 1.0)
+            q1, q2 = self.network.select('target_critic')(obs, value_goals, pi_actions)
+            return jnp.minimum(q1, q2)
+        return self.network.select('value')(obs, value_goals)
+
+    def sample_full_buffer_batch(self, train_dataset, mb_batch_size):
+        """Evaluate V_pi(s) across ALL states s in the replay buffer and sample in-buffer anchors ~ exp(b * V_pi(s))."""
+        ds_dict = train_dataset.dataset._dict
+        valid_idxs = getattr(train_dataset, 'valid_idxs', np.arange(train_dataset.size))
+        if 'next_observations' in ds_dict:
+            all_next_obs = ds_dict['next_observations'][valid_idxs]
+        else:
+            next_idxs = np.minimum(valid_idxs + 1, train_dataset.size - 1)
+            all_next_obs = ds_dict['observations'][next_idxs]
+
+        total_n = len(valid_idxs)
+        chunk_size = 100000
+        scores = []
+        for start in range(0, total_n, chunk_size):
+            end = min(start + chunk_size, total_n)
+            v_chunk = np.asarray(self.eval_v_pi_chunk(all_next_obs[start:end]))
+            scores.append(v_chunk)
+        all_v = np.concatenate(scores, axis=0).astype(np.float64)
+
+        if int(self.network.step) > 0:
+            if self.config.get('normalize_value_logits', True):
+                v_mean = np.mean(all_v)
+                v_std = max(np.std(all_v), 1e-5)
+                v_scaled = np.clip((all_v - v_mean) / v_std, -5.0, 5.0)
+            else:
+                v_scaled = np.clip(all_v - np.max(all_v), -20.0, 0.0)
+            logits = float(self.config['tau_exp']) * v_scaled
+            logits -= np.max(logits)
+            probs = np.exp(logits)
+            probs /= np.sum(probs)
+            chosen_local = np.random.choice(total_n, size=mb_batch_size, replace=True, p=probs)
+        else:
+            chosen_local = np.random.randint(0, total_n, size=mb_batch_size)
+
+        selected_idxs = valid_idxs[chosen_local]
+        return train_dataset.sample(mb_batch_size, idxs=selected_idxs)
+
     def sample_exp_value_anchors(self, batch, rng):
-        """Sample in-dataset states s_i in D_real with probability proportional to exp(tau_exp * V_psi(s_i))."""
+        """Sample in-dataset states s_i in D_real with probability proportional to exp(tau_exp * V_pi(s_i))."""
         obs = batch['next_observations']
         batch_size = obs.shape[0]
         num_anchors = max(1, int(batch_size * float(self.config['anchor_fraction'])))
         value_goals = batch['value_goals'] if ('value_goals' in batch and batch['value_goals'] is not None) else None
+        actor_goals = batch['actor_goals'] if ('actor_goals' in batch and batch['actor_goals'] is not None) else None
 
-        v = self.network.select('value')(obs, value_goals)
+        if self.config.get('full_buffer_exp', True):
+            # Batch is already sampled from the full replay buffer with P(s) propto exp(b * V_pi(s))
+            return jnp.arange(num_anchors, dtype=jnp.int32)
+
+        v = self.eval_v_pi_chunk(obs, value_goals, actor_goals)
         if self.config.get('normalize_value_logits', True):
             v_mean = jnp.mean(v)
             v_std = jnp.maximum(jnp.std(v), 1e-5)
@@ -137,7 +189,6 @@ class ReverseRolloutsExpAgent(flax.struct.PyTreeNode):
             v_scaled = jnp.clip(v - jnp.max(v), -20.0, 0.0)
 
         logits = float(self.config['tau_exp']) * v_scaled
-        # Before RL step 1, sample uniformly; once V_psi updates (step > 0), sample ~ exp(tau * V(s))
         logits = jnp.where(self.network.step > 0, logits, jnp.zeros_like(logits))
         sampled_idx = jax.random.categorical(rng, logits=logits, shape=(num_anchors,))
         return sampled_idx
@@ -474,6 +525,8 @@ def get_config():
             max_rollout_steps=20,
             anchor_fraction=0.25,
             tau_exp=3.0,
+            use_q_pi=True,
+            full_buffer_exp=True,
             normalize_value_logits=True,
             use_usad=True,
             morel_thresh=0.5,
