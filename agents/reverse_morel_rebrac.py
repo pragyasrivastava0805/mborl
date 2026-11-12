@@ -73,8 +73,8 @@ class ReverseMOReLReBRACAgent(ForwardMOReLReBRACAgent):
     def rollout(self, batch, rng):
         H = self.config['rollout_steps']
         raw_ob = batch['next_observations']
-        raw_vg = batch['value_goals'] if ('value_goals' in batch and batch['value_goals'] is not None) else None
-        raw_ag = batch['actor_goals'] if ('actor_goals' in batch and batch['actor_goals'] is not None) else None
+        raw_vg = None
+        raw_ag = None
 
         rng, sample_rng = jax.random.split(rng)
         pi_act = jnp.clip(self.network.select('target_actor')(raw_ob), -1.0, 1.0)
