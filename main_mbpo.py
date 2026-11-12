@@ -201,16 +201,21 @@ def main(_):
         buffer.add_batch(fake_batch)
         return buffer
 
+    def sample_rollout_batch():
+        if config.get('full_buffer_argmax', False) and hasattr(agent, 'sample_full_buffer_batch'):
+            return agent.sample_full_buffer_batch(train_dataset, FLAGS.mb_batch_size)
+        return train_dataset.sample(FLAGS.mb_batch_size)
+
     fake_buffer = None
     for _ in range(FLAGS.mb_retain_epoch if use_model else 0):
         rng, rollout_rng = jax.random.split(rng)
-        batch = train_dataset.sample(FLAGS.mb_batch_size)
+        batch = sample_rollout_batch()
         fake_buffer = add_rollouts(fake_buffer, agent.rollout(batch, rollout_rng))
 
     for i in tqdm.tqdm(range(epoch+1, FLAGS.offline_steps + 1), smoothing=0.1, dynamic_ncols=True):
         if use_model and i % FLAGS.mb_rollout_freq == 0:
             rng, rollout_rng = jax.random.split(rng)
-            batch = train_dataset.sample(FLAGS.mb_batch_size)
+            batch = sample_rollout_batch()
             fake_buffer = add_rollouts(fake_buffer, agent.rollout(batch, rollout_rng))
 
         real_batch = train_dataset.sample(data_batch_size)

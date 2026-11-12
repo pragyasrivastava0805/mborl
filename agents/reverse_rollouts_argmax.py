@@ -6,6 +6,7 @@ import flax
 import jax
 import jax.numpy as jnp
 import ml_collections
+import numpy as np
 import optax
 
 from utils.flax_utils import ModuleDict, TrainState, nonpytree_field
@@ -120,6 +121,38 @@ class ReverseRolloutsArgmaxAgent(flax.struct.PyTreeNode):
         prev_obs = self.model.select('reverse_dynamics')(next_observations, actions).sample(seed=dyn_rng)
         member = self.elites[jax.random.randint(member_rng, (prev_obs.shape[1],), 0, self.elites.shape[0])]
         return prev_obs[member, jnp.arange(prev_obs.shape[1])]
+
+    @jax.jit
+    def eval_v_pi_chunk(self, obs, value_goals=None, actor_goals=None):
+        """Evaluate V_pi(s) = min(Q_1(s, pi(s)), Q_2(s, pi(s))) on a chunk of replay buffer states."""
+        if self.config.get('use_q_pi', True):
+            pi_actions = jnp.clip(self.network.select('actor')(obs, actor_goals).mode(), -1.0, 1.0)
+            q1, q2 = self.network.select('target_critic')(obs, value_goals, pi_actions)
+            return jnp.minimum(q1, q2)
+        return self.network.select('value')(obs, value_goals)
+
+    def sample_full_buffer_batch(self, train_dataset, mb_batch_size):
+        """Evaluate V_pi(s) across ALL states s in the replay buffer and return the global argmax V_pi(s) batch."""
+        all_obs = train_dataset.dataset['next_observations']
+        total_n = train_dataset.size
+        chunk_size = 100000
+        scores = []
+        for start in range(0, total_n, chunk_size):
+            end = min(start + chunk_size, total_n)
+            v_chunk = np.asarray(self.eval_v_pi_chunk(all_obs[start:end]))
+            scores.append(v_chunk)
+        all_v = np.concatenate(scores, axis=0)
+
+        top_k = max(1, int(mb_batch_size * float(self.config.get('argmax_top_fraction', 0.05))))
+        if top_k < total_n:
+            part_idx = np.argpartition(-all_v, top_k)[:top_k]
+            top_pool = part_idx[np.argsort(-all_v[part_idx])]
+        else:
+            top_pool = np.argsort(-all_v)
+
+        repeats = (mb_batch_size + len(top_pool) - 1) // len(top_pool)
+        selected_idxs = np.tile(top_pool, repeats)[:mb_batch_size]
+        return train_dataset.sample(mb_batch_size, idxs=selected_idxs)
 
     def select_argmax_v_pi_anchors(self, batch):
         """Deterministically select in-dataset states maximizing V_pi(s) = min(Q_1(s, pi(s)), Q_2(s, pi(s)))."""
@@ -474,6 +507,7 @@ def get_config():
             max_rollout_steps=20,
             anchor_fraction=0.25,
             argmax_top_fraction=0.05,
+            full_buffer_argmax=True,
             use_q_pi=True,
             use_usad=True,
             morel_thresh=0.5,

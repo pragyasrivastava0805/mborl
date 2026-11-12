@@ -9,6 +9,7 @@ import ml_collections
 import optax
 
 from agents.combo import COMBOAgent, get_config as get_combo_config
+from utils.anchor_sampling import select_anchor_indices
 from utils.flax_utils import ModuleDict, TrainState, nonpytree_field
 from utils.networks import Dynamics, GCActor, GCValue, LogParam
 
@@ -97,9 +98,20 @@ class ReverseMOReLCQLAgent(COMBOAgent):
     @jax.jit
     def rollout(self, batch, rng):
         H = self.config['rollout_steps']
-        anchor_ob = batch['next_observations']
+        raw_ob = batch['next_observations']
+        raw_vg = batch['value_goals'] if ('value_goals' in batch and batch['value_goals'] is not None) else None
+        raw_ag = batch['actor_goals'] if ('actor_goals' in batch and batch['actor_goals'] is not None) else None
+
+        rng, sample_rng = jax.random.split(rng)
+        pi_act = jnp.clip(self.network.select('actor')(raw_ob, raw_ag).mode(), -1.0, 1.0)
+        qs = self.network.select('target_critic')(raw_ob, raw_vg, pi_act)
+        v_scores = jnp.min(qs, axis=0)
+        idx = select_anchor_indices(raw_ob, v_scores, self.network.step, self.config, sample_rng)
+
+        anchor_ob = raw_ob[idx]
         batch_size = anchor_ob.shape[0]
-        value_goals = batch['value_goals'] if 'value_goals' in batch else None
+        value_goals = raw_vg[idx] if raw_vg is not None else None
+        actor_goals = raw_ag[idx] if raw_ag is not None else None
 
         def reverse_rollout_step(carry, _):
             cur_next_ob, alive, halted, rng = carry
@@ -110,7 +122,10 @@ class ReverseMOReLCQLAgent(COMBOAgent):
             raw_prev_ob = self.sample_reverse_dynamics(cur_next_ob, rev_action, dyn_rng)
 
             disc = self.compute_discrepancy(cur_next_ob, rev_action)
-            unknown = (disc > self.usad_thresh).astype(jnp.float32)
+            if self.config.get('use_usad', True):
+                unknown = (disc > self.usad_thresh).astype(jnp.float32)
+            else:
+                unknown = jnp.zeros_like(disc)
             new_halted = jnp.maximum(halted, unknown)
 
             prev_ob = jnp.where(new_halted[:, None] > 0.5, cur_next_ob, raw_prev_ob)
@@ -145,8 +160,8 @@ class ReverseMOReLCQLAgent(COMBOAgent):
         _, rollout_data = jax.lax.scan(reverse_rollout_step, init_carry, None, length=H)
 
         if value_goals is not None:
-            rollout_data['value_goals'] = jnp.repeat(batch['value_goals'][None], H, axis=0)
-            rollout_data['actor_goals'] = jnp.repeat(batch['actor_goals'][None], H, axis=0)
+            rollout_data['value_goals'] = jnp.repeat(value_goals[None], H, axis=0)
+            rollout_data['actor_goals'] = jnp.repeat(actor_goals[None], H, axis=0)
 
         return {k: v.reshape((H * batch_size,) + v.shape[2:]) for k, v in rollout_data.items()}
 
@@ -264,6 +279,14 @@ def get_config():
     config.dynamics_hidden_dims = (512, 512, 512)
     config.discount = 0.99
     config.rollout_steps = 20
+    config.use_usad = True
+    config.sampling_mode = 'uniform'
+    config.anchor_fraction = 0.25
+    config.tau_exp = 3.0
+    config.q_beta = 3.0
+    config.argmax_top_fraction = 0.01
+    config.high_freq_grid_bins = 64
+    config.kinematic_density_weight = 0.1
     config.morel_thresh = 0.5
     config.morel_thresh_std_mult = 1.5
     config.auto_calibrate_thresh = True

@@ -9,6 +9,7 @@ import ml_collections
 import optax
 
 from agents.forward_morel_rebrac import ForwardMOReLReBRACAgent, get_config as get_fwd_rebrac_config
+from utils.anchor_sampling import select_anchor_indices
 from utils.flax_utils import ModuleDict, TrainState, nonpytree_field
 from utils.networks import Dynamics, GCActor, GCDeterActor, GCValue
 
@@ -71,9 +72,20 @@ class ReverseMOReLReBRACAgent(ForwardMOReLReBRACAgent):
     @jax.jit
     def rollout(self, batch, rng):
         H = self.config['rollout_steps']
-        anchor_ob = batch['next_observations']
+        raw_ob = batch['next_observations']
+        raw_vg = batch['value_goals'] if ('value_goals' in batch and batch['value_goals'] is not None) else None
+        raw_ag = batch['actor_goals'] if ('actor_goals' in batch and batch['actor_goals'] is not None) else None
+
+        rng, sample_rng = jax.random.split(rng)
+        pi_act = jnp.clip(self.network.select('target_actor')(raw_ob), -1.0, 1.0)
+        q1, q2 = self.network.select('target_critic')(raw_ob, None, pi_act)
+        v_scores = jnp.minimum(q1, q2)
+        idx = select_anchor_indices(raw_ob, v_scores, self.network.step, self.config, sample_rng)
+
+        anchor_ob = raw_ob[idx]
         batch_size = anchor_ob.shape[0]
-        value_goals = batch['value_goals'] if 'value_goals' in batch else None
+        value_goals = raw_vg[idx] if raw_vg is not None else None
+        actor_goals = raw_ag[idx] if raw_ag is not None else None
 
         def reverse_rollout_step(carry, _):
             cur_next_ob, alive, halted, rng = carry
@@ -83,7 +95,11 @@ class ReverseMOReLReBRACAgent(ForwardMOReLReBRACAgent):
             raw_prev_ob = self.sample_reverse_dynamics(cur_next_ob, rev_action, dyn_rng)
 
             disc = self.compute_discrepancy(cur_next_ob, rev_action)
-            new_halted = jnp.maximum(halted, (disc > self.usad_thresh).astype(jnp.float32))
+            if self.config.get('use_usad', True):
+                unknown = (disc > self.usad_thresh).astype(jnp.float32)
+            else:
+                unknown = jnp.zeros_like(disc)
+            new_halted = jnp.maximum(halted, unknown)
             prev_ob = jnp.where(new_halted[:, None] > 0.5, cur_next_ob, raw_prev_ob)
 
             succ_logit = self.model.select('success')(prev_ob, value_goals, rev_action)
@@ -106,8 +122,8 @@ class ReverseMOReLReBRACAgent(ForwardMOReLReBRACAgent):
         init_carry = (anchor_ob, jnp.ones((batch_size,)), jnp.zeros((batch_size,)), rng)
         _, rollout_data = jax.lax.scan(reverse_rollout_step, init_carry, None, length=H)
         if value_goals is not None:
-            rollout_data['value_goals'] = jnp.repeat(batch['value_goals'][None], H, axis=0)
-            rollout_data['actor_goals'] = jnp.repeat(batch['actor_goals'][None], H, axis=0)
+            rollout_data['value_goals'] = jnp.repeat(value_goals[None], H, axis=0)
+            rollout_data['actor_goals'] = jnp.repeat(actor_goals[None], H, axis=0)
         return {k: v.reshape((H * batch_size,) + v.shape[2:]) for k, v in rollout_data.items()}
 
     @classmethod
@@ -153,4 +169,12 @@ class ReverseMOReLReBRACAgent(ForwardMOReLReBRACAgent):
 def get_config():
     cfg = get_fwd_rebrac_config()
     cfg.agent_name = 'reverse_morel_rebrac'
+    cfg.use_usad = True
+    cfg.sampling_mode = 'uniform'
+    cfg.anchor_fraction = 0.25
+    cfg.tau_exp = 3.0
+    cfg.q_beta = 3.0
+    cfg.argmax_top_fraction = 0.01
+    cfg.high_freq_grid_bins = 64
+    cfg.kinematic_density_weight = 0.1
     return cfg

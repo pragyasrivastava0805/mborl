@@ -8,6 +8,7 @@ import jax.numpy as jnp
 import ml_collections
 import optax
 
+from utils.anchor_sampling import select_anchor_indices
 from utils.flax_utils import ModuleDict, TrainState, nonpytree_field
 from utils.networks import Dynamics, GCActor, GCValue
 
@@ -124,9 +125,23 @@ class ForwardMOReLIQLAgent(flax.struct.PyTreeNode):
     @jax.jit
     def rollout(self, batch, rng):
         H = self.config['rollout_steps']
-        init_ob = batch['observations']
+        raw_ob = batch['observations']
+        raw_vg = batch['value_goals'] if ('value_goals' in batch and batch['value_goals'] is not None) else None
+        raw_ag = batch['actor_goals'] if ('actor_goals' in batch and batch['actor_goals'] is not None) else None
+
+        rng, sample_rng = jax.random.split(rng)
+        if self.config.get('sampling_mode', 'uniform') == 'argmax':
+            pi_act = jnp.clip(self.network.select('actor')(raw_ob, raw_ag).mode(), -1.0, 1.0)
+            q1, q2 = self.network.select('target_critic')(raw_ob, raw_vg, pi_act)
+            v_scores = jnp.minimum(q1, q2)
+        else:
+            v_scores = self.network.select('value')(raw_ob, raw_vg)
+
+        idx = select_anchor_indices(raw_ob, v_scores, self.network.step, self.config, sample_rng)
+        init_ob = raw_ob[idx]
         batch_size = init_ob.shape[0]
-        value_goals = batch['value_goals'] if 'value_goals' in batch else None
+        value_goals = raw_vg[idx] if raw_vg is not None else None
+        actor_goals = raw_ag[idx] if raw_ag is not None else None
 
         def forward_rollout_step(carry, _):
             cur_ob, alive, halted, rng = carry
@@ -174,8 +189,8 @@ class ForwardMOReLIQLAgent(flax.struct.PyTreeNode):
         _, rollout_data = jax.lax.scan(forward_rollout_step, init_carry, None, length=H)
 
         if value_goals is not None:
-            rollout_data['value_goals'] = jnp.repeat(batch['value_goals'][None], H, axis=0)
-            rollout_data['actor_goals'] = jnp.repeat(batch['actor_goals'][None], H, axis=0)
+            rollout_data['value_goals'] = jnp.repeat(value_goals[None], H, axis=0)
+            rollout_data['actor_goals'] = jnp.repeat(actor_goals[None], H, axis=0)
 
         return {k: v.reshape((H * batch_size,) + v.shape[2:]) for k, v in rollout_data.items()}
 
@@ -439,6 +454,13 @@ def get_config():
             model_holdout_size=1000,
             rollout_steps=20,
             use_usad=True,
+            sampling_mode='uniform',
+            anchor_fraction=0.25,
+            tau_exp=3.0,
+            q_beta=3.0,
+            argmax_top_fraction=0.01,
+            high_freq_grid_bins=64,
+            kinematic_density_weight=0.1,
             morel_thresh=0.5,
             morel_thresh_std_mult=1.5,
             auto_calibrate_thresh=True,
