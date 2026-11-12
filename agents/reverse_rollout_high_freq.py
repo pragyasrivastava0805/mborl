@@ -182,7 +182,10 @@ class ReverseRolloutHighFreqAgent(flax.struct.PyTreeNode):
         }
 
     def sample_cvae_anchors(self, batch, rng):
-        """Sample starting states s_anchor ~ P(s | V(s) >= t) from the Conditional VAE p_omega(s | z, c=1)."""
+        """Generate anchors with the Conditional VAE P(s | V(s) >= t), reject large projection errors
+        (||s_gen - s_nn||_2 > eps_proj calibrated on held-out high-value dataset states), resample,
+        and replace each generated anchor with its closest suitable high-value dataset state.
+        """
         obs = batch['next_observations']
         batch_size, ob_dim = obs.shape
         num_anchors = max(1, int(batch_size * float(self.config['high_freq_quantile'])))
@@ -190,6 +193,7 @@ class ReverseRolloutHighFreqAgent(flax.struct.PyTreeNode):
         actor_goals = batch['actor_goals'] if ('actor_goals' in batch and batch['actor_goals'] is not None) else None
 
         v = self.network.select('value')(obs, value_goals)
+        # Suitable dataset states: high-value subset {s in D_real : V_psi(s) >= t}
         top_idx = jnp.argsort(-v)[:num_anchors]
         real_high_v_obs = obs[top_idx]
         anchor_value_goals = value_goals[top_idx] if value_goals is not None else None
@@ -198,25 +202,86 @@ class ReverseRolloutHighFreqAgent(flax.struct.PyTreeNode):
         # Condition strictly on c = 1 (i.e. V_psi(s) >= t)
         c_ones = jnp.ones((num_anchors, 1), dtype=jnp.float32)
         cond = jnp.concatenate([c_ones, anchor_value_goals], axis=-1) if anchor_value_goals is not None else c_ones
-
-        prior_rng, post_rng, mix_rng = jax.random.split(rng, 3)
         latent_dim = int(self.config['cvae_latent_dim'])
-        z_prior = jax.random.normal(prior_rng, shape=(num_anchors, latent_dim))
-        post_dist = self.network.select('cvae_encoder')(real_high_v_obs, goals=cond)
-        z_post = post_dist.sample(seed=post_rng)
 
-        use_prior = jax.random.bernoulli(mix_rng, p=float(self.config['cvae_prior_prob']), shape=(num_anchors, 1))
-        z = jnp.where(use_prior, z_prior, z_post)
+        def generate_cvae_draw(draw_rng):
+            prior_rng, post_rng, mix_rng = jax.random.split(draw_rng, 3)
+            z_prior = jax.random.normal(prior_rng, shape=(num_anchors, latent_dim))
+            post_dist = self.network.select('cvae_encoder')(real_high_v_obs, goals=cond)
+            z_post = post_dist.sample(seed=post_rng)
+            use_prior = jax.random.bernoulli(mix_rng, p=float(self.config['cvae_prior_prob']), shape=(num_anchors, 1))
+            z = jnp.where(use_prior, z_prior, z_post)
+            decoded = self.network.select('cvae_decoder')(z, goals=cond).mode()
+            obs_min = jnp.min(obs, axis=0, keepdims=True)
+            obs_max = jnp.max(obs, axis=0, keepdims=True)
+            return jnp.clip(decoded, obs_min, obs_max)
 
-        decoded_obs = self.network.select('cvae_decoder')(z, goals=cond).mode()
-        obs_min = jnp.min(obs, axis=0, keepdims=True)
-        obs_max = jnp.max(obs, axis=0, keepdims=True)
-        decoded_obs = jnp.clip(decoded_obs, obs_min, obs_max)
+        if not self.config.get('cvae_nn_proj', True):
+            decoded_obs = generate_cvae_draw(rng)
+            warmup_steps = int(self.config.get('cvae_warmup_steps', 10000))
+            anchor_ob = jnp.where(self.network.step >= warmup_steps, decoded_obs, real_high_v_obs)
+            return anchor_ob, anchor_value_goals, anchor_actor_goals, top_idx
 
-        # Warm up V_psi(s) and the Conditional VAE for cvae_warmup_steps before switching rollout anchors to decoded CVAE states
+        # Nearest-neighbor projection onto suitable high-value dataset candidates with rejection resampling
+        rng, split_rng, r1_rng, r2_rng, r3_rng, fallback_rng = jax.random.split(rng, 6)
+        perm = jax.random.permutation(split_rng, num_anchors)
+        cand_size = min(int(self.config.get('cvae_nn_cand_size', 2048)), max(2, (num_anchors * 3) // 4))
+        hold_size = min(int(self.config.get('cvae_nn_holdout_size', 512)), max(1, num_anchors - cand_size))
+
+        cand_local_idx = perm[:cand_size]
+        hold_local_idx = perm[cand_size : cand_size + hold_size]
+        cand_obs = real_high_v_obs[cand_local_idx]  # (cand_size, ob_dim)
+        hold_obs = real_high_v_obs[hold_local_idx]  # (hold_size, ob_dim)
+        cand_sq_norm = jnp.sum(jnp.square(cand_obs), axis=-1)[None, :]  # (1, cand_size)
+
+        # Calibrate eps_proj using nearest-neighbor distances from held-out high-value dataset states to candidate set
+        hold_dists_sq = jnp.maximum(
+            jnp.sum(jnp.square(hold_obs), axis=-1, keepdims=True) + cand_sq_norm - 2.0 * (hold_obs @ cand_obs.T),
+            0.0,
+        )
+        hold_nn_dist = jnp.sqrt(jnp.min(hold_dists_sq, axis=-1))
+        eps_proj = jnp.quantile(hold_nn_dist, float(self.config.get('cvae_proj_quantile', 0.95)))
+
+        def project_draw(draw_rng):
+            gen_obs = generate_cvae_draw(draw_rng)
+            dists_sq = jnp.maximum(
+                jnp.sum(jnp.square(gen_obs), axis=-1, keepdims=True) + cand_sq_norm - 2.0 * (gen_obs @ cand_obs.T),
+                0.0,
+            )
+            nn_cand_idx = jnp.argmin(dists_sq, axis=-1)
+            nn_dist = jnp.sqrt(jnp.min(dists_sq, axis=-1))
+            return nn_cand_idx, nn_dist
+
+        # Round 1: initial CVAE sample + NN projection
+        best_cand_idx, best_dist = project_draw(r1_rng)
+        accepted = best_dist <= eps_proj
+
+        # Round 2: resample rejected slots (where ||s_gen - s_nn||_2 > eps_proj)
+        r2_cand_idx, r2_dist = project_draw(r2_rng)
+        use_r2 = (~accepted) & (r2_dist < best_dist)
+        best_cand_idx = jnp.where(use_r2, r2_cand_idx, best_cand_idx)
+        best_dist = jnp.where(use_r2, r2_dist, best_dist)
+        accepted = best_dist <= eps_proj
+
+        # Round 3: second resample for any still-rejected slots
+        r3_cand_idx, r3_dist = project_draw(r3_rng)
+        use_r3 = (~accepted) & (r3_dist < best_dist)
+        best_cand_idx = jnp.where(use_r3, r3_cand_idx, best_cand_idx)
+        best_dist = jnp.where(use_r3, r3_dist, best_dist)
+        accepted = best_dist <= eps_proj
+
+        # Final guard: if any slot still exceeds eps_proj after 3 draws, discard it and sample a valid candidate
+        fallback_cand_idx = jax.random.randint(fallback_rng, shape=(num_anchors,), minval=0, maxval=cand_size)
+        final_cand_idx = jnp.where(accepted, best_cand_idx, fallback_cand_idx)
+
+        proj_global_idx = top_idx[cand_local_idx[final_cand_idx]]
         warmup_steps = int(self.config.get('cvae_warmup_steps', 10000))
-        anchor_ob = jnp.where(self.network.step >= warmup_steps, decoded_obs, real_high_v_obs)
-        return anchor_ob, anchor_value_goals, anchor_actor_goals, top_idx
+        final_global_idx = jnp.where(self.network.step >= warmup_steps, proj_global_idx, top_idx)
+
+        anchor_ob = obs[final_global_idx]
+        proj_value_goals = value_goals[final_global_idx] if value_goals is not None else None
+        proj_actor_goals = actor_goals[final_global_idx] if actor_goals is not None else None
+        return anchor_ob, proj_value_goals, proj_actor_goals, final_global_idx
 
     def select_high_freq_anchors(self, batch):
         """Fallback spatial/kinematic hub selector when use_cvae=False."""
@@ -641,6 +706,10 @@ def get_config():
             max_rollout_steps=20,
             use_usad=True,
             use_cvae=True,
+            cvae_nn_proj=True,
+            cvae_nn_cand_size=2048,
+            cvae_nn_holdout_size=512,
+            cvae_proj_quantile=0.95,
             cvae_warmup_steps=10000,
             cvae_latent_dim=16,
             cvae_hidden_dims=(512, 512, 512),
