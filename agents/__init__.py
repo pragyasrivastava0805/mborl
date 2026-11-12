@@ -18,6 +18,7 @@ from agents.reverse_morel_anchor_bootstrap import ReverseMOReLAnchorBootstrapAge
 from agents.reverse_rollout_high_freq import ReverseRolloutHighFreqAgent
 from agents.reverse_rollouts_exp import ReverseRolloutsExpAgent
 from agents.reverse_rollouts_qbeta import ReverseRolloutsQBetaAgent
+from agents.reverse_rollouts_argmax import ReverseRolloutsArgmaxAgent
 from agents.forward_morel_iql import ForwardMOReLIQLAgent
 from agents.forward_morel_cql import ForwardMOReLCQLAgent
 from agents.reverse_morel_cql import ReverseMOReLCQLAgent
@@ -53,6 +54,7 @@ agents = dict(
     reverse_rollout_high_freq=ReverseRolloutHighFreqAgent,
     reverse_rollouts_exp=ReverseRolloutsExpAgent,
     reverse_rollouts_qbeta=ReverseRolloutsQBetaAgent,
+    reverse_rollouts_argmax=ReverseRolloutsArgmaxAgent,
     forward_morel_iql=ForwardMOReLIQLAgent,
     forward_morel_cql=ForwardMOReLCQLAgent,
     reverse_morel_cql=ReverseMOReLCQLAgent,
