@@ -456,7 +456,7 @@ class MACAgent(flax.struct.PyTreeNode):
         return cls(rng, network=network, config=flax.core.FrozenDict(**config))
 
 
-def get_config():
+def get_config(profile='default'):
     config = ml_collections.ConfigDict(
         dict(
             # Agent hyperparameters.
@@ -495,4 +495,27 @@ def get_config():
             gc_negative=True,  # Whether to use '0 if s == g else -1' (True) or '1 if s == g else 0' (False) as reward.
         )
     )
+    if profile == 'reward':
+        # Table 7 of arXiv:2512.08108 (Shared hyperparameters for reward-based single-task 1M benchmarks).
+        config.update(
+            dict(
+                batch_size=256,
+                rollout_batch_size=256,
+                actor_hidden_dims=(512, 512, 512, 512),
+                value_hidden_dims=(512, 512, 512, 512),
+                dynamics_hidden_dims=(512, 512, 512, 512),
+                dataset_class='ACDataset',
+            )
+        )
+    elif profile == 'gc_maze':
+        # Table 6 of arXiv:2512.08108 (Goal-conditioned maze navigation: actor goals sampled uniformly from trajectory).
+        config.update(
+            dict(
+                dataset_class='ACGCDataset',
+                actor_p_curgoal=0.0,
+                actor_p_trajgoal=1.0,
+                actor_p_randomgoal=0.0,
+                actor_geom_sample=False,
+            )
+        )
     return config
