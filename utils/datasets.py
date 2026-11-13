@@ -544,7 +544,7 @@ class ACGCDataset:
             'observations': _batch['observations'][0],
             'actions': np.concatenate(_batch['actions'][:ac_actor], axis=-1), 
             'next_observations': np.concatenate(_batch['observations'][1:], axis=-1) if self.chunk_next_obs else _batch['observations'][-1],
-            'next_goals': _batch['oracle_reps'][-1],
+            'next_goals': _batch['oracle_reps'][-1] if 'oracle_reps' in _batch else _batch['observations'][-1],
         }
 
         value_goal_idxs = self.sample_goals(
