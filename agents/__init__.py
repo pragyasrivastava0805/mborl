@@ -20,12 +20,14 @@ from agents.reverse_rollouts_exp import ReverseRolloutsExpAgent
 from agents.reverse_rollouts_qbeta import ReverseRolloutsQBetaAgent
 from agents.reverse_rollouts_argmax import ReverseRolloutsArgmaxAgent
 from agents.reverse_rollouts_pi import ReverseRolloutsPIAgent
+from agents.reverse_rollouts_snis import ReverseRolloutsSNISAgent
 from agents.forward_morel_iql import ForwardMOReLIQLAgent
 from agents.forward_morel_cql import ForwardMOReLCQLAgent
 from agents.reverse_morel_cql import ReverseMOReLCQLAgent
 from agents.forward_morel_rebrac import ForwardMOReLReBRACAgent
 from agents.reverse_morel_rebrac import ReverseMOReLReBRACAgent
 from agents.combo import COMBOAgent
+from agents.combo_reverse_snis import COMBOReverseSNISAgent
 from agents.fmpc import FMPCAgent
 from agents.leq import LEQAgent
 from agents.mobile import MOBILEAgent
@@ -57,12 +59,14 @@ agents = dict(
     reverse_rollouts_qbeta=ReverseRolloutsQBetaAgent,
     reverse_rollouts_argmax=ReverseRolloutsArgmaxAgent,
     reverse_rollouts_pi=ReverseRolloutsPIAgent,
+    reverse_rollouts_snis=ReverseRolloutsSNISAgent,
     forward_morel_iql=ForwardMOReLIQLAgent,
     forward_morel_cql=ForwardMOReLCQLAgent,
     reverse_morel_cql=ReverseMOReLCQLAgent,
     forward_morel_rebrac=ForwardMOReLReBRACAgent,
     reverse_morel_rebrac=ReverseMOReLReBRACAgent,
     combo=COMBOAgent,
+    combo_reverse_snis=COMBOReverseSNISAgent,
     fmpc=FMPCAgent,
     leq=LEQAgent,
     mobile=MOBILEAgent,
