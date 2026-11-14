@@ -25,6 +25,11 @@ def snis_reverse_rollout(model, elites, config, anchor_ob, value_goals, actor_go
       3. Resample j* ~ Categorical(softmax(D / beta)). This approximates rho*(a | x) ∝ mu^-(a | x) exp(D(x, a) / beta).
       4. Draw a fresh predecessor s ~ P^-(. | x, a_j*) from a random elite, store (s, a_j*, r, x) and set x <- s.
 
+    Backup modes (config['backup_mode']):
+      'single': chained transitions (s_k, a_k, r_k, s_{k-1}); only the first reverse transition uses the real anchor.
+      'multi' : every synthetic state bootstraps directly on the real anchor x_0 with its k-step return,
+                (s_k, a_k, R_k, x_0) with R_k = r_k + gamma * m_k * R_{k-1} and mask M_k = m_k * gamma^{k-1} * prod m,
+                so the critic target r + gamma * mask * Q(x_0) equals the k-step backup to the anchor.
     Anchors are processed in chunks of config['rollout_chunk'] to bound memory. Returns arrays of shape (H * N, ...).
     """
     H = int(config['max_rollout_steps'])
@@ -34,6 +39,7 @@ def snis_reverse_rollout(model, elites, config, anchor_ob, value_goals, actor_go
     discount = config['discount']
     clip_reward = bool(config.get('clip_model_reward', False))
     gc_negative = bool(config['gc_negative'])
+    multi = config.get('backup_mode', 'single') == 'multi'
 
     n = anchor_ob.shape[0]
     chunk = int(min(config.get('rollout_chunk', 4096), n))
@@ -58,7 +64,7 @@ def snis_reverse_rollout(model, elites, config, anchor_ob, value_goals, actor_go
         x0, vg, ag, chunk_rng = xs
 
         def step(carry, _):
-            x, alive, rng = carry
+            x, alive, cum_r, cum_d, rng = carry
             rng, prop_rng, mc_rng, cat_rng, fresh_rng, member_rng = jax.random.split(rng, 6)
 
             # 1. K proposals from the reverse-BC policy.
@@ -89,18 +95,29 @@ def snis_reverse_rollout(model, elites, config, anchor_ob, value_goals, actor_go
             prev = fresh[member, ar]
             rewards, masks = labels(prev, vg, action)
 
+            if multi:
+                # k-step return and survival discount from prev to the real anchor x0.
+                new_cum_r = rewards + discount * masks * cum_r
+                anchor_mask = masks * cum_d
+                out_next, out_r, out_m = x0, new_cum_r, anchor_mask
+                new_cum_d = discount * anchor_mask
+            else:
+                out_next, out_r, out_m = x, rewards, masks
+                new_cum_r, new_cum_d = cum_r, cum_d
             out = {
                 'observations': prev,
                 'actions': action,
-                'next_observations': x,
-                'rewards': rewards,
-                'masks': masks,
+                'next_observations': out_next,
+                'rewards': out_r,
+                'masks': out_m,
                 'rollout_valid': alive,
             }
             # Reaching a predicted goal state ends the backward chain (its predecessors would bootstrap from a terminal).
-            return (prev, alive * masks, rng), out
+            return (prev, alive * masks, new_cum_r, new_cum_d, rng), out
 
-        _, data = jax.lax.scan(step, (x0, jnp.ones((x0.shape[0],)), chunk_rng), None, length=H)
+        c = x0.shape[0]
+        init = (x0, jnp.ones((c,)), jnp.zeros((c,)), jnp.ones((c,)), chunk_rng)
+        _, data = jax.lax.scan(step, init, None, length=H)
         return data  # (H, C, ...)
 
     rngs = jax.random.split(rng, n_chunks)

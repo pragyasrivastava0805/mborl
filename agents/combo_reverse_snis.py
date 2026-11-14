@@ -1,5 +1,6 @@
 import flax
 import jax
+import numpy as np
 import jax.numpy as jnp
 import ml_collections
 import optax
@@ -17,6 +18,10 @@ class COMBOReverseSNISAgent(COMBOAgent):
     reverse-BC actor + success/reward heads) and `rollout` differ, so CQL (f = 1), COMBO and this agent differ only
     in where the synthetic transitions come from. Rollouts start from the same uniformly sampled dataset states as COMBO.
     V_bar_k(s) = min_j Q_target_j(s, pi_k(s)) scores the reverse actions.
+
+    Anchors are always real dataset states. With anchor_mode='exp_value' they are drawn from the whole dataset with
+    P(s) ∝ exp(anchor_beta * z(V_pi(s))), where V_pi(s) = min_j Q_target_j(s, pi(s)) and z is the z-score clipped to
+    [-5, 5] (same normalization as reverse_rollouts_exp). The first rollout batch (before any update) is uniform.
     """
 
     @jax.jit
@@ -38,6 +43,30 @@ class COMBOReverseSNISAgent(COMBOAgent):
     def v_bar(self, obs, value_goals=None, actor_goals=None):
         actions = jnp.clip(self.network.select('actor')(obs, goals=actor_goals).mode(), -1.0, 1.0)
         return self.network.select('target_critic')(obs, goals=value_goals, actions=actions).min(axis=0)
+
+    @jax.jit
+    def eval_v_pi_chunk(self, obs):
+        return self.v_bar(obs)
+
+    def sample_full_buffer_batch(self, train_dataset, mb_batch_size):
+        """Anchors from the real dataset: P(s) ∝ exp(anchor_beta * z(V_pi(s))) over all dataset next-states."""
+        ds_dict = train_dataset.dataset._dict
+        valid_idxs = getattr(train_dataset, 'valid_idxs', np.arange(train_dataset.size))
+        if 'next_observations' in ds_dict:
+            all_next_obs = ds_dict['next_observations'][valid_idxs]
+        else:
+            all_next_obs = ds_dict['observations'][np.minimum(valid_idxs + 1, train_dataset.size - 1)]
+        n = len(valid_idxs)
+        if int(self.network.step) == 0:
+            chosen = np.random.randint(0, n, size=mb_batch_size)
+        else:
+            v = np.concatenate([np.asarray(self.eval_v_pi_chunk(all_next_obs[s:s + 100000])) for s in range(0, n, 100000)])
+            v = v.astype(np.float64)
+            z = np.clip((v - v.mean()) / max(v.std(), 1e-5), -5.0, 5.0)
+            logits = float(self.config['anchor_beta']) * z
+            p = np.exp(logits - logits.max())
+            chosen = np.random.choice(n, size=mb_batch_size, replace=True, p=p / p.sum())
+        return train_dataset.sample(mb_batch_size, idxs=valid_idxs[chosen])
 
     @jax.jit
     def rollout(self, batch, rng):
@@ -76,6 +105,9 @@ def get_config(profile='ogbench'):
             max_rollout_steps=5,  # H; keep equal to rollout_steps (buffer capacity).
             rollout_chunk=2048,
             clip_model_reward=False,  # COMBO labels model rewards without clipping.
+            backup_mode='single',  # 'single' (chained) or 'multi' (all synthetic states bootstrap on the real anchor).
+            full_buffer_exp=True,  # main_mbpo.py then calls sample_full_buffer_batch for rollout anchors.
+            anchor_beta=3.0,  # P(anchor) ∝ exp(anchor_beta * z(V_pi(s))).
         )
     )
     return config
