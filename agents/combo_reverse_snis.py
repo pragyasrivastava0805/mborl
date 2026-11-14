@@ -49,21 +49,31 @@ class COMBOReverseSNISAgent(COMBOAgent):
         return self.v_bar(obs)
 
     def sample_full_buffer_batch(self, train_dataset, mb_batch_size):
-        """Anchors from the real dataset: P(s) ∝ exp(anchor_beta * z(V_pi(s))) over all dataset next-states."""
+        """Sample real-dataset anchors using 'exp_value', 'frontier', or 'uniform' weighting."""
         ds_dict = train_dataset.dataset._dict
         valid_idxs = getattr(train_dataset, 'valid_idxs', np.arange(train_dataset.size))
+        if self.config.get('exclude_terminal_anchors', False) and 'masks' in ds_dict:
+            non_term = valid_idxs[ds_dict['masks'][valid_idxs] > 0.5]
+            if len(non_term) > 0:
+                valid_idxs = non_term
         if 'next_observations' in ds_dict:
             all_next_obs = ds_dict['next_observations'][valid_idxs]
         else:
             all_next_obs = ds_dict['observations'][np.minimum(valid_idxs + 1, train_dataset.size - 1)]
         n = len(valid_idxs)
-        if int(self.network.step) == 0:
+        anchor_mode = self.config.get('anchor_mode', 'exp_value')
+        if int(self.network.step) == 0 or anchor_mode == 'uniform':
             chosen = np.random.randint(0, n, size=mb_batch_size)
         else:
             v = np.concatenate([np.asarray(self.eval_v_pi_chunk(all_next_obs[s:s + 100000])) for s in range(0, n, 100000)])
             v = v.astype(np.float64)
             z = np.clip((v - v.mean()) / max(v.std(), 1e-5), -5.0, 5.0)
-            logits = float(self.config['anchor_beta']) * z
+            if anchor_mode == 'frontier':
+                target_z = float(self.config.get('anchor_target_z', 0.5))
+                band_std = max(float(self.config.get('anchor_band_std', 0.75)), 1e-3)
+                logits = -0.5 * ((z - target_z) / band_std) ** 2
+            else:
+                logits = float(self.config['anchor_beta']) * z
             p = np.exp(logits - logits.max())
             chosen = np.random.choice(n, size=mb_batch_size, replace=True, p=p / p.sum())
         return train_dataset.sample(mb_batch_size, idxs=valid_idxs[chosen])
@@ -107,7 +117,11 @@ def get_config(profile='ogbench'):
             clip_model_reward=False,  # COMBO labels model rewards without clipping.
             backup_mode='single',  # 'single' (chained) or 'multi' (all synthetic states bootstrap on the real anchor).
             full_buffer_exp=True,  # main_mbpo.py then calls sample_full_buffer_batch for rollout anchors.
-            anchor_beta=3.0,  # P(anchor) ∝ exp(anchor_beta * z(V_pi(s))).
+            anchor_mode='exp_value',  # 'exp_value', 'frontier', or 'uniform'.
+            anchor_beta=3.0,  # P(anchor) ∝ exp(anchor_beta * z(V_pi(s))) when anchor_mode='exp_value'.
+            anchor_target_z=0.5,  # Center z-score when anchor_mode='frontier'.
+            anchor_band_std=0.75,  # Width in z-score units when anchor_mode='frontier'.
+            exclude_terminal_anchors=False,  # Exclude transitions with masks <= 0.5 from reverse anchors.
         )
     )
     return config

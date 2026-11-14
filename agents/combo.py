@@ -154,6 +154,8 @@ class COMBOAgent(flax.struct.PyTreeNode):
                 rewards = success - (1.0 if self.config['gc_negative'] else 0.0)
             else:
                 rewards = self.model.select('reward')(ob, None, action)
+                if self.config.get('clip_model_reward', False):
+                    rewards = jnp.clip(rewards, -1.0, 0.0)
 
             next_alive = alive * (1.0 - success) if self.config['rollout_stop_on_terminal'] else alive
             return (next_ob, next_alive, rng), {
@@ -242,6 +244,9 @@ class COMBOAgent(flax.struct.PyTreeNode):
         if self.config['conservative_states'] == 'model':
             cons_obs = df_fake['observations']
             cons_goals = df_fake['value_goals'] if gc else None
+        elif self.config['conservative_states'] == 'real':
+            cons_obs = real_batch['observations']
+            cons_goals = real_batch['value_goals'] if gc else None
         else:
             cons_obs = obs
             cons_goals = value_goals
@@ -543,10 +548,11 @@ def get_config(profile='ogbench'):
             real_ratio=0.5,  # Real-data fraction f of each batch (paper: 0.5, 0.8); f = 1 is CQL(H). Replaces --mb_batch_ratio.
             beta=1.0,  # Conservative coefficient (paper candidates: 0.5, 1.0, 5.0).
             num_samples=10,  # Action samples per proposal (uniform and policy) for the log-sum-exp estimate.
-            conservative_states='mixture',  # States for the push-down term ('mixture' of real/model or 'model').
+            conservative_states='mixture',  # States for the push-down term ('mixture', 'model', or 'real').
             rollout_policy='policy',  # Rollout policy ('policy' or 'uniform').
             rollout_steps=5,  # Model rollout horizon.
             rollout_stop_on_terminal=False,  # Whether to drop transitions after a predicted termination.
+            clip_model_reward=False,  # Whether to clip predicted single-task model rewards to [-1, 0].
             ob_dim=ml_collections.config_dict.placeholder(int),  # Observation dimension (set automatically).
             action_dim=ml_collections.config_dict.placeholder(int),  # Action dimension (set automatically).
             # Dataset hyperparameters.
