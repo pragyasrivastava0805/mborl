@@ -126,6 +126,20 @@ def main(_):
     train_dataset = dataset_class(Dataset.create(scale=scale, **train_dataset), config)
     val_dataset = dataset_class(Dataset.create(scale=scale, **val_dataset), config)
 
+    # Populate standardized forward state-delta stats for RCFM dynamics before agent creation.
+    if config.get('dynamics_type', 'gaussian') == 'rcfm' and len(config.get('delta_mean', ())) == 0:
+        ds_dict = train_dataset.dataset._dict
+        v_idxs = getattr(
+            train_dataset,
+            'valid_idxs',
+            getattr(train_dataset.dataset, 'valid_idxs', np.arange(train_dataset.size - 1)),
+        )
+        s_t = ds_dict['observations'][v_idxs]
+        s_tp1 = ds_dict['next_observations'][v_idxs] if 'next_observations' in ds_dict else ds_dict['observations'][v_idxs + 1]
+        fwd_delta = (s_tp1 - s_t).astype(np.float32)
+        config['delta_mean'] = tuple(float(x) for x in fwd_delta.mean(axis=0))
+        config['delta_std'] = tuple(float(x) for x in np.maximum(fwd_delta.std(axis=0), 1e-3))
+
     example_batch = train_dataset.sample(1)
 
     agent_class = agents[config['agent_name']]
@@ -170,13 +184,27 @@ def main(_):
             agent, model_info = agent.update_model(train_dataset.sample(config['batch_size']))
             if j == 1 or j % FLAGS.log_interval == 0:
                 model_logger.log({f'model/{k}': v for k, v in model_info.items()}, step=j)
+        if (
+            config.get('dynamics_type', 'gaussian') == 'rcfm'
+            and config.get('rcfm_distill_steps', 0) > 0
+            and hasattr(agent, 'distill_step')
+        ):
+            distill_logger = CsvLogger(os.path.join(FLAGS.save_dir, 'distill.csv'))
+            d_opt_state = agent.init_distill_opt()
+            d_steps = int(config['rcfm_distill_steps'])
+            for d in tqdm.tqdm(range(1, d_steps + 1), desc='distill', dynamic_ncols=True):
+                agent, d_opt_state, d_info = agent.distill_step(d_opt_state, train_dataset.sample(config['batch_size']))
+                if d == 1 or d % FLAGS.log_interval == 0 or d == d_steps:
+                    distill_logger.log({f'distill/{k}': v for k, v in d_info.items()}, step=d)
+            distill_logger.close()
+            print(f"RCFM 1-step distillation done ({d_steps} steps); final_loss={float(d_info['dynamics/distill_loss']):.5f}")
         agent, holdout_info = agent.select_elites(holdout_batch)
         holdout_info['holdout/elites'] = ' '.join(str(e) for e in np.array(agent.elites))
         model_logger.log(holdout_info, step=config['model_train_steps'])
         model_logger.close()
         wandb.log({k: v for k, v in holdout_info.items() if k != 'holdout/elites'}, step=0)
         wandb.run.summary['holdout/elites'] = holdout_info['holdout/elites']
-        print(f"Model pretraining done; elites {holdout_info['holdout/elites']}")
+        print(f"Model pretraining done; elites {holdout_info['holdout/elites']} elite_mse={float(holdout_info['holdout/elite_mse']):.6f}")
 
         # Checkpoint the pretrained model as epoch 0 so restarts skip pretraining.
         save_agent(agent, FLAGS.save_dir, 0)

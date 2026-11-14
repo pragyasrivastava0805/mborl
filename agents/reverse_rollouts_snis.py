@@ -10,7 +10,15 @@ import numpy as np
 import optax
 
 from utils.flax_utils import ModuleDict, TrainState, nonpytree_field
-from utils.networks import Dynamics, GCActor, GCValue
+from utils.networks import (
+    Dynamics,
+    GCActor,
+    GCValue,
+    OneStepFlowEnsemble,
+    ResidualFlowEnsemble,
+    rcfm_flow_loss,
+    rcfm_sample_all,
+)
 
 sg = lambda x: jax.lax.stop_gradient(x)
 
@@ -40,6 +48,27 @@ def snis_reverse_rollout(model, elites, config, anchor_ob, value_goals, actor_go
     clip_reward = bool(config.get('clip_model_reward', False))
     gc_negative = bool(config['gc_negative'])
     multi = config.get('backup_mode', 'single') == 'multi'
+    use_rcfm = config.get('dynamics_type', 'gaussian') == 'rcfm'
+    if use_rcfm:
+        rev_dm = -jnp.asarray(config['delta_mean'], dtype=jnp.float32)
+        rev_ds = jnp.asarray(config['delta_std'], dtype=jnp.float32)
+
+    def sample_rev_all(obs_in, act_in, key):
+        if use_rcfm:
+            return rcfm_sample_all(
+                model,
+                'reverse_dynamics',
+                'reverse_dynamics_1step',
+                obs_in,
+                act_in,
+                rev_dm,
+                rev_ds,
+                config['num_dynamics'],
+                config['rcfm_sample_mode'],
+                config['rcfm_ode_steps'],
+                key,
+            )
+        return model.select('reverse_dynamics')(obs_in, act_in).sample(seed=key)
 
     n = anchor_ob.shape[0]
     chunk = int(min(config.get('rollout_chunk', 4096), n))
@@ -73,7 +102,7 @@ def snis_reverse_rollout(model, elites, config, anchor_ob, value_goals, actor_go
 
             # 2. M predecessors per proposal, one from each of M elite members (a single ensemble forward pass).
             x_k = jnp.broadcast_to(x[None], (K,) + x.shape)
-            preds = model.select('reverse_dynamics')(x_k, cand).sample(seed=mc_rng)  # (E, K, C, D)
+            preds = sample_rev_all(x_k, cand, mc_rng)  # (E, K, C, D)
             s_jm = preds[elites[:M]]  # (M, K, C, D)
             cand_m = jnp.broadcast_to(cand[None], (M,) + cand.shape)
             vg_m = None if vg is None else jnp.broadcast_to(vg[None, None], (M, K) + vg.shape)
@@ -90,7 +119,7 @@ def snis_reverse_rollout(model, elites, config, anchor_ob, value_goals, actor_go
             action = cand[j_star, ar]
 
             # 4. Fresh predecessor from a uniformly chosen elite; store (s, a*, r, x).
-            fresh = model.select('reverse_dynamics')(x, action).sample(seed=fresh_rng)  # (E, C, D)
+            fresh = sample_rev_all(x, action, fresh_rng)  # (E, C, D)
             member = elites[jax.random.randint(member_rng, (x.shape[0],), 0, elites.shape[0])]
             prev = fresh[member, ar]
             rewards, masks = labels(prev, vg, action)
@@ -130,13 +159,29 @@ def snis_reverse_rollout(model, elites, config, anchor_ob, value_goals, actor_go
     return {k: v.reshape((H * n,) + v.shape[2:]) for k, v in data.items()}
 
 
-def reverse_model_loss(model, batch, grad_params):
-    """Reverse dynamics (Gaussian NLL), reverse-BC actor (NLL), success (BCE) and reward (MSE) losses."""
+def reverse_model_loss(model, batch, grad_params, config=None, rng=None):
+    """Reverse dynamics (Gaussian NLL or RCFM flow MSE), reverse-BC actor (NLL), success (BCE) and reward (MSE)."""
     goals = batch['value_goals'] if 'value_goals' in batch else None
 
-    rev_dist = model.select('reverse_dynamics')(batch['next_observations'], batch['actions'], params=grad_params)
-    dynamics_loss = -rev_dist.log_prob(batch['observations'][None]).mean()
-    dynamics_mse = jnp.square(rev_dist.mean() - batch['observations'][None]).mean()
+    if config is not None and config.get('dynamics_type', 'gaussian') == 'rcfm':
+        rev_dm = -jnp.asarray(config['delta_mean'], dtype=jnp.float32)
+        rev_ds = jnp.asarray(config['delta_std'], dtype=jnp.float32)
+        dynamics_loss = rcfm_flow_loss(
+            model.select('reverse_dynamics'),
+            batch['next_observations'],
+            batch['actions'],
+            batch['observations'],
+            rev_dm,
+            rev_ds,
+            config['num_dynamics'],
+            rng,
+            params=grad_params,
+        )
+        dynamics_mse = dynamics_loss
+    else:
+        rev_dist = model.select('reverse_dynamics')(batch['next_observations'], batch['actions'], params=grad_params)
+        dynamics_loss = -rev_dist.log_prob(batch['observations'][None]).mean()
+        dynamics_mse = jnp.square(rev_dist.mean() - batch['observations'][None]).mean()
 
     rev_act_dist = model.select('reverse_actor')(batch['next_observations'], goals=goals, params=grad_params)
     rev_actor_loss = -rev_act_dist.log_prob(jnp.clip(batch['actions'], -1.0 + 1e-5, 1.0 - 1e-5)).mean()
@@ -162,14 +207,7 @@ def reverse_model_loss(model, batch, grad_params):
 
 
 def reverse_model_defs(config, ob_dim, action_dim, layer_norm):
-    return dict(
-        reverse_dynamics=Dynamics(
-            hidden_dims=config['dynamics_hidden_dims'],
-            output_dim=ob_dim,
-            layer_norm=layer_norm,
-            num_ensembles=config['num_dynamics'],
-            stochastic=True,
-        ),
+    defs = dict(
         reverse_actor=GCActor(
             hidden_dims=config['dynamics_hidden_dims'],
             action_dim=action_dim,
@@ -182,6 +220,29 @@ def reverse_model_defs(config, ob_dim, action_dim, layer_norm):
         success=GCValue(hidden_dims=config['dynamics_hidden_dims'], layer_norm=layer_norm, num_ensembles=1),
         reward=GCValue(hidden_dims=config['dynamics_hidden_dims'], layer_norm=layer_norm, num_ensembles=1),
     )
+    if config.get('dynamics_type', 'gaussian') == 'rcfm':
+        defs['reverse_dynamics'] = ResidualFlowEnsemble(
+            hidden_dims=config['rcfm_hidden_dims'],
+            output_dim=ob_dim,
+            num_ensembles=config['num_dynamics'],
+            layer_norm=config['rcfm_layer_norm'],
+            time_half_dim=config['rcfm_time_half_dim'],
+        )
+        defs['reverse_dynamics_1step'] = OneStepFlowEnsemble(
+            hidden_dims=config['rcfm_hidden_dims'],
+            output_dim=ob_dim,
+            num_ensembles=config['num_dynamics'],
+            layer_norm=config['rcfm_layer_norm'],
+        )
+    else:
+        defs['reverse_dynamics'] = Dynamics(
+            hidden_dims=config['dynamics_hidden_dims'],
+            output_dim=ob_dim,
+            layer_norm=layer_norm,
+            num_ensembles=config['num_dynamics'],
+            stochastic=True,
+        )
+    return defs
 
 
 class ReverseRolloutsSNISAgent(flax.struct.PyTreeNode):

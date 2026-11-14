@@ -10,7 +10,43 @@ import numpy as np
 import optax
 
 from utils.flax_utils import ModuleDict, TrainState, nonpytree_field
-from utils.networks import Dynamics, GCActor, GCValue, LogParam
+from utils.networks import (
+    Dynamics,
+    GCActor,
+    GCValue,
+    LogParam,
+    OneStepFlowEnsemble,
+    ResidualFlowEnsemble,
+    rcfm_distill_loss,
+    rcfm_flow_loss,
+    rcfm_member_mse,
+    rcfm_sample_all,
+)
+
+
+def build_model_tx(config, rcfm_keys=(), frozen_keys=()):
+    """Optimizer for model pretraining: clipped Adam for RCFM flow, Adam(model_lr) for heads, zero for frozen student."""
+    if config.get('dynamics_type', 'gaussian') != 'rcfm':
+        return optax.adam(learning_rate=config['model_lr'])
+    transforms = {
+        'rcfm': optax.chain(
+            optax.clip_by_global_norm(config['rcfm_grad_clip']),
+            optax.adam(learning_rate=config['rcfm_lr']),
+        ),
+        'head': optax.adam(learning_rate=config['model_lr']),
+        'frozen': optax.set_to_zero(),
+    }
+
+    def label_fn(params):
+        return {
+            k: jax.tree_util.tree_map(
+                lambda _: 'rcfm' if k in rcfm_keys else ('frozen' if k in frozen_keys else 'head'),
+                v,
+            )
+            for k, v in params.items()
+        }
+
+    return optax.multi_transform(transforms, label_fn)
 
 sg = lambda x: jax.lax.stop_gradient(x)
 
@@ -61,13 +97,78 @@ class COMBOAgent(flax.struct.PyTreeNode):
     # Model pretraining
     # ------------------------------------------------------------------ #
 
+    def _delta_stats(self, reverse=False):
+        """Return (delta_mean, delta_std) as float32 arrays, negating mean for reverse transitions."""
+        dm = jnp.asarray(self.config['delta_mean'], dtype=jnp.float32)
+        ds = jnp.asarray(self.config['delta_std'], dtype=jnp.float32)
+        return (-dm, ds) if reverse else (dm, ds)
+
+    def _rcfm_distill_tx(self):
+        return optax.chain(
+            optax.clip_by_global_norm(self.config['rcfm_grad_clip']),
+            optax.adam(learning_rate=self.config['rcfm_lr']),
+        )
+
+    def init_distill_opt(self):
+        """Initialize a fresh Adam state solely for the 1-step distilled dynamics student."""
+        return self._rcfm_distill_tx().init(self.model.params['modules_dynamics_1step'])
+
+    def _rcfm_distill_step(self, d_opt_state, vel_name, onestep_name, s_in, actions):
+        """Take one gradient step on the 1-step distilled student while keeping all other model params frozen."""
+        student_key = f'modules_{onestep_name}'
+        student_params = self.model.params[student_key]
+        d_tx = self._rcfm_distill_tx()
+        new_rng, rng = jax.random.split(self.rng)
+
+        def loss_fn(sp):
+            full_params = {**self.model.params, student_key: sp}
+            return rcfm_distill_loss(
+                self.model.select(vel_name),
+                self.model.select(onestep_name),
+                s_in,
+                actions,
+                self.config['num_dynamics'],
+                self.config['rcfm_teacher_steps'],
+                rng,
+                params=full_params,
+            )
+
+        loss, grads = jax.value_and_grad(loss_fn)(student_params)
+        updates, new_d_opt_state = d_tx.update(grads, d_opt_state, student_params)
+        new_student_params = optax.apply_updates(student_params, updates)
+        new_params = {**self.model.params, student_key: new_student_params}
+        new_model = self.model.replace(params=new_params)
+        return self.replace(model=new_model, rng=new_rng), new_d_opt_state, {'dynamics/distill_loss': loss}
+
+    @jax.jit
+    def distill_step(self, d_opt_state, batch):
+        """Distill forward RCFM teacher into the 1-step forward flow map."""
+        return self._rcfm_distill_step(
+            d_opt_state, 'dynamics', 'dynamics_1step', batch['observations'], batch['actions']
+        )
+
     def model_loss(self, batch, grad_params, rng):
-        """Compute the dynamics (Gaussian NLL), success (BCE) and reward (MSE) losses."""
+        """Compute the dynamics (Gaussian NLL or RCFM flow MSE), success (BCE) and reward (MSE) losses."""
         goals = batch['value_goals'] if 'value_goals' in batch else None
 
-        dist = self.model.select('dynamics')(batch['observations'], batch['actions'], params=grad_params)
-        dynamics_loss = -dist.log_prob(batch['next_observations'][None]).mean()
-        dynamics_mse = jnp.square(dist.mean() - batch['next_observations'][None]).mean()
+        if self.config.get('dynamics_type', 'gaussian') == 'rcfm':
+            dm, ds = self._delta_stats(reverse=False)
+            dynamics_loss = rcfm_flow_loss(
+                self.model.select('dynamics'),
+                batch['observations'],
+                batch['actions'],
+                batch['next_observations'],
+                dm,
+                ds,
+                self.config['num_dynamics'],
+                rng,
+                params=grad_params,
+            )
+            dynamics_mse = dynamics_loss
+        else:
+            dist = self.model.select('dynamics')(batch['observations'], batch['actions'], params=grad_params)
+            dynamics_loss = -dist.log_prob(batch['next_observations'][None]).mean()
+            dynamics_mse = jnp.square(dist.mean() - batch['next_observations'][None]).mean()
 
         succ_logit = self.model.select('success')(batch['observations'], goals, batch['actions'], params=grad_params)
         success = jax.nn.sigmoid(succ_logit)
@@ -104,11 +205,30 @@ class COMBOAgent(flax.struct.PyTreeNode):
     @jax.jit
     def select_elites(self, holdout_batch):
         """Select the members with the lowest held-out next-state MSE as elites."""
-        dist = self.model.select('dynamics')(holdout_batch['observations'], holdout_batch['actions'])
-        member_mse = jnp.square(dist.mean() - holdout_batch['next_observations'][None]).mean(axis=(1, 2))
+        if self.config.get('dynamics_type', 'gaussian') == 'rcfm':
+            dm, ds = self._delta_stats(reverse=False)
+            member_mse = rcfm_member_mse(
+                self.model,
+                'dynamics',
+                'dynamics_1step',
+                holdout_batch['observations'],
+                holdout_batch['actions'],
+                holdout_batch['next_observations'],
+                dm,
+                ds,
+                self.config['num_dynamics'],
+                self.config['rcfm_sample_mode'],
+                self.config['rcfm_ode_steps'],
+                self.rng,
+            )
+        else:
+            dist = self.model.select('dynamics')(holdout_batch['observations'], holdout_batch['actions'])
+            member_mse = jnp.square(dist.mean() - holdout_batch['next_observations'][None]).mean(axis=(1, 2))
         elites = jnp.argsort(member_mse)[: self.config['num_elites']].astype(jnp.int32)
 
         _, model_info = self.model_loss(holdout_batch, None, self.rng)
+        if self.config.get('dynamics_type', 'gaussian') == 'rcfm':
+            model_info['dynamics/dynamics_mse'] = member_mse.mean()
         info = {f'holdout/{k}': v for k, v in model_info.items()}
         info.update({f'holdout/member_mse_{i}': member_mse[i] for i in range(self.config['num_dynamics'])})
         info['holdout/elite_mse'] = member_mse[elites].mean()
@@ -117,7 +237,23 @@ class COMBOAgent(flax.struct.PyTreeNode):
     def sample_dynamics(self, observations, actions, seed):
         """Sample next states, using a uniformly chosen elite member for every transition."""
         dyn_rng, member_rng = jax.random.split(seed)
-        next_obs = self.model.select('dynamics')(observations, actions).sample(seed=dyn_rng)
+        if self.config.get('dynamics_type', 'gaussian') == 'rcfm':
+            dm, ds = self._delta_stats(reverse=False)
+            next_obs = rcfm_sample_all(
+                self.model,
+                'dynamics',
+                'dynamics_1step',
+                observations,
+                actions,
+                dm,
+                ds,
+                self.config['num_dynamics'],
+                self.config['rcfm_sample_mode'],
+                self.config['rcfm_ode_steps'],
+                dyn_rng,
+            )
+        else:
+            next_obs = self.model.select('dynamics')(observations, actions).sample(seed=dyn_rng)
         member = self.elites[jax.random.randint(member_rng, (next_obs.shape[1],), 0, self.elites.shape[0])]
         return next_obs[member, jnp.arange(next_obs.shape[1])]
 
@@ -471,13 +607,8 @@ class COMBOAgent(flax.struct.PyTreeNode):
         network = TrainState.create(network_def, network_params, tx=network_tx)
 
         # Model networks.
-        dynamics_def = Dynamics(
-            hidden_dims=config['dynamics_hidden_dims'],
-            output_dim=ob_dim,
-            layer_norm=config['model_layer_norm'],
-            num_ensembles=config['num_dynamics'],
-            stochastic=True,
-        )
+        assert config.get('dynamics_type', 'gaussian') in ('gaussian', 'rcfm')
+        assert config.get('rcfm_sample_mode', '1step') in ('1step', 'ode')
         success_def = GCValue(
             hidden_dims=config['dynamics_hidden_dims'],
             layer_norm=config['model_layer_norm'],
@@ -488,14 +619,50 @@ class COMBOAgent(flax.struct.PyTreeNode):
             layer_norm=config['model_layer_norm'],
             num_ensembles=1,
         )
-        model_info = dict(
-            dynamics=(dynamics_def, (ex_observations, ex_actions)),
-            success=(success_def, (ex_observations, ex_goals, ex_actions)),
-            reward=(reward_def, (ex_observations, ex_goals, ex_actions)),
-        )
+        if config.get('dynamics_type', 'gaussian') == 'rcfm':
+            assert len(config['delta_mean']) == ob_dim and len(config['delta_std']) == ob_dim, (
+                'RCFM dynamics requires delta_mean and delta_std populated from the training dataset.'
+            )
+            num_ens = config['num_dynamics']
+            ex_x = jnp.zeros((num_ens, ex_observations.shape[0], ob_dim))
+            ex_t = jnp.zeros((num_ens, ex_observations.shape[0], 1))
+            dynamics_def = ResidualFlowEnsemble(
+                hidden_dims=config['rcfm_hidden_dims'],
+                output_dim=ob_dim,
+                num_ensembles=num_ens,
+                layer_norm=config['rcfm_layer_norm'],
+                time_half_dim=config['rcfm_time_half_dim'],
+            )
+            dynamics_1step_def = OneStepFlowEnsemble(
+                hidden_dims=config['rcfm_hidden_dims'],
+                output_dim=ob_dim,
+                num_ensembles=num_ens,
+                layer_norm=config['rcfm_layer_norm'],
+            )
+            model_info = dict(
+                dynamics=(dynamics_def, (ex_observations, ex_actions, ex_x, ex_t)),
+                dynamics_1step=(dynamics_1step_def, (ex_observations, ex_actions, ex_x)),
+                success=(success_def, (ex_observations, ex_goals, ex_actions)),
+                reward=(reward_def, (ex_observations, ex_goals, ex_actions)),
+            )
+            model_tx = build_model_tx(config, rcfm_keys=('modules_dynamics',), frozen_keys=('modules_dynamics_1step',))
+        else:
+            dynamics_def = Dynamics(
+                hidden_dims=config['dynamics_hidden_dims'],
+                output_dim=ob_dim,
+                layer_norm=config['model_layer_norm'],
+                num_ensembles=config['num_dynamics'],
+                stochastic=True,
+            )
+            model_info = dict(
+                dynamics=(dynamics_def, (ex_observations, ex_actions)),
+                success=(success_def, (ex_observations, ex_goals, ex_actions)),
+                reward=(reward_def, (ex_observations, ex_goals, ex_actions)),
+            )
+            model_tx = build_model_tx(config)
         model_def = ModuleDict({k: v[0] for k, v in model_info.items()})
         model_params = model_def.init(model_rng, **{k: v[1] for k, v in model_info.items()})['params']
-        model = TrainState.create(model_def, model_params, tx=optax.adam(learning_rate=config['model_lr']))
+        model = TrainState.create(model_def, model_params, tx=model_tx)
 
         elites = jnp.arange(config['num_elites'], dtype=jnp.int32)
 
@@ -544,6 +711,18 @@ def get_config(profile='ogbench'):
             num_elites=5,  # Number of elite members used for rollouts.
             model_train_steps=100000,  # Number of model pretraining steps.
             model_holdout_size=1000,  # Number of held-out transitions for elite selection.
+            dynamics_type='gaussian',  # 'gaussian' (baseline) or 'rcfm' (Residual Conditional Flow Matching).
+            rcfm_hidden_dims=(512, 512, 512, 512),  # Hidden dims for RCFM flow and 1-step student networks.
+            rcfm_layer_norm=True,  # Whether to use LayerNorm in RCFM networks.
+            rcfm_lr=3e-4,  # Learning rate for RCFM flow and 1-step distillation.
+            rcfm_grad_clip=10.0,  # Global norm gradient clipping for RCFM updates.
+            rcfm_time_half_dim=16,  # Half-dimension of sinusoidal time embedding.
+            rcfm_teacher_steps=10,  # Euler ODE steps for the teacher during 1-step distillation.
+            rcfm_distill_steps=25000,  # Post-pretraining 1-step distillation steps for RCFM-1s.
+            rcfm_sample_mode='1step',  # '1step' (distilled RCFM-1s) or 'ode' (multi-step Euler).
+            rcfm_ode_steps=5,  # Euler ODE steps when rcfm_sample_mode='ode'.
+            delta_mean=(),  # Forward state-delta mean tuple (auto-populated from train_dataset for rcfm).
+            delta_std=(),  # Forward state-delta std tuple (auto-populated from train_dataset for rcfm).
             # COMBO hyperparameters.
             real_ratio=0.5,  # Real-data fraction f of each batch (paper: 0.5, 0.8); f = 1 is CQL(H). Replaces --mb_batch_ratio.
             beta=1.0,  # Conservative coefficient (paper candidates: 0.5, 1.0, 5.0).

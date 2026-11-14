@@ -708,3 +708,112 @@ class Dynamics(nn.Module):
             pred = observations + pred
 
         return pred
+
+
+def sinusoidal_time_emb(t, half_dim=16):
+    """Multi-scale sinusoidal embedding for flow time t in [0, 1]."""
+    freqs = jnp.exp(jnp.linspace(0.0, jnp.log(100.0), half_dim)) * jnp.pi
+    args = t * freqs
+    return jnp.concatenate([jnp.sin(args), jnp.cos(args)], axis=-1)
+
+
+class ResidualFlowEnsemble(nn.Module):
+    """Ensembled conditional velocity field v_theta(s, a, x_t, t) on standardized state deltas."""
+
+    hidden_dims: Sequence[int]
+    output_dim: int
+    num_ensembles: int = 7
+    layer_norm: bool = True
+    time_half_dim: int = 16
+
+    @nn.compact
+    def __call__(self, observations, actions, x_t, t):
+        t_emb = sinusoidal_time_emb(t, self.time_half_dim)
+        if observations.ndim == x_t.ndim - 1:
+            observations = jnp.broadcast_to(observations[None], (self.num_ensembles,) + observations.shape)
+            actions = jnp.broadcast_to(actions[None], (self.num_ensembles,) + actions.shape)
+        x = jnp.concatenate([observations, actions, x_t, t_emb], axis=-1)
+        mlp_cls = ensemblize(MLP, self.num_ensembles, in_axes=0)
+        net = mlp_cls((*self.hidden_dims, self.output_dim), activate_final=False, layer_norm=self.layer_norm)
+        return net(x)
+
+
+class OneStepFlowEnsemble(nn.Module):
+    """Ensembled 1-step distilled flow map f_phi(s, a, x_0) -> standardized state delta."""
+
+    hidden_dims: Sequence[int]
+    output_dim: int
+    num_ensembles: int = 7
+    layer_norm: bool = True
+
+    @nn.compact
+    def __call__(self, observations, actions, x_0):
+        if observations.ndim == x_0.ndim - 1:
+            observations = jnp.broadcast_to(observations[None], (self.num_ensembles,) + observations.shape)
+            actions = jnp.broadcast_to(actions[None], (self.num_ensembles,) + actions.shape)
+        x = jnp.concatenate([observations, actions, x_0], axis=-1)
+        mlp_cls = ensemblize(MLP, self.num_ensembles, in_axes=0)
+        net = mlp_cls((*self.hidden_dims, self.output_dim), activate_final=False, layer_norm=self.layer_norm)
+        return net(x)
+
+
+def rcfm_flow_loss(vel_fn, s_in, actions, s_tgt, delta_mean, delta_std, num_ensembles, rng, params=None):
+    """Conditional flow-matching MSE loss on standardized residual deltas."""
+    xk, tk = jax.random.split(rng)
+    z_tgt = ((s_tgt - s_in) - delta_mean) / delta_std
+    x0 = jax.random.normal(xk, (num_ensembles,) + s_in.shape)
+    t = jax.random.uniform(tk, (num_ensembles,) + s_in.shape[:-1] + (1,))
+    xt = (1.0 - t) * x0 + t * z_tgt[None]
+    vel = z_tgt[None] - x0
+    pred = vel_fn(s_in, actions, xt, t, params=params)
+    return jnp.mean((pred - vel) ** 2)
+
+
+def rcfm_euler_z(vel_fn, s_in, actions, x0, n_steps):
+    """Integrate dx/dt = v_theta(s, a, x, t) from t=0 to t=1 in n_steps Euler steps."""
+    dt = 1.0 / n_steps
+    ts = jnp.arange(n_steps, dtype=jnp.float32) * dt
+
+    def body(x, ti):
+        t = jnp.full(x.shape[:-1] + (1,), ti)
+        return x + dt * vel_fn(s_in, actions, x, t), None
+
+    x_end, _ = jax.lax.scan(body, x0, ts)
+    return x_end
+
+
+def rcfm_distill_loss(vel_fn, onestep_fn, s_in, actions, num_ensembles, teacher_steps, rng, params=None):
+    """MSE loss distilling the n-step Euler teacher into the 1-step flow map."""
+    x0 = jax.random.normal(rng, (num_ensembles,) + s_in.shape)
+    z_tgt = jax.lax.stop_gradient(rcfm_euler_z(vel_fn, s_in, actions, x0, teacher_steps))
+    pred = onestep_fn(s_in, actions, x0, params=params)
+    return jnp.mean((pred - z_tgt) ** 2)
+
+
+def rcfm_sample_all(
+    model, vel_name, onestep_name, s_in, actions, delta_mean, delta_std,
+    num_ensembles, sample_mode, ode_steps, rng,
+):
+    """Sample predicted target states from all ensemble members; shape (E, *batch, D)."""
+    x0 = jax.random.normal(rng, (num_ensembles,) + s_in.shape)
+    if sample_mode == '1step':
+        z = model.select(onestep_name)(s_in, actions, x0)
+    else:
+        z = rcfm_euler_z(model.select(vel_name), s_in, actions, x0, ode_steps)
+    return s_in[None] + delta_mean + delta_std * z
+
+
+def rcfm_member_mse(
+    model, vel_name, onestep_name, s_in, actions, s_tgt, delta_mean, delta_std,
+    num_ensembles, sample_mode, ode_steps, rng, num_mc=16,
+):
+    """Per-member holdout MSE estimated via num_mc Monte Carlo draws from the deployed sampler."""
+    keys = jax.random.split(rng, num_mc)
+    samples = jax.vmap(
+        lambda k: rcfm_sample_all(
+            model, vel_name, onestep_name, s_in, actions, delta_mean, delta_std,
+            num_ensembles, sample_mode, ode_steps, k,
+        )
+    )(keys)
+    mean_pred = samples.mean(axis=0)
+    return jnp.square(mean_pred - s_tgt[None]).mean(axis=(1, 2))

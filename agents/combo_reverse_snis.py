@@ -5,9 +5,10 @@ import jax.numpy as jnp
 import ml_collections
 import optax
 
-from agents.combo import COMBOAgent, get_config as combo_get_config
+from agents.combo import COMBOAgent, build_model_tx, get_config as combo_get_config
 from agents.reverse_rollouts_snis import reverse_model_defs, reverse_model_loss, snis_reverse_rollout
 from utils.flax_utils import ModuleDict, TrainState
+from utils.networks import rcfm_member_mse
 
 
 class COMBOReverseSNISAgent(COMBOAgent):
@@ -24,19 +25,52 @@ class COMBOReverseSNISAgent(COMBOAgent):
     [-5, 5] (same normalization as reverse_rollouts_exp). The first rollout batch (before any update) is uniform.
     """
 
+    def init_distill_opt(self):
+        """Initialize a fresh Adam state solely for the 1-step distilled reverse dynamics student."""
+        return self._rcfm_distill_tx().init(self.model.params['modules_reverse_dynamics_1step'])
+
+    @jax.jit
+    def distill_step(self, d_opt_state, batch):
+        """Distill reverse RCFM teacher into the 1-step reverse flow map."""
+        return self._rcfm_distill_step(
+            d_opt_state, 'reverse_dynamics', 'reverse_dynamics_1step', batch['next_observations'], batch['actions']
+        )
+
     @jax.jit
     def update_model(self, batch):
         new_rng, rng = jax.random.split(self.rng)
-        new_model, info = self.model.apply_loss_fn(loss_fn=lambda p: reverse_model_loss(self.model, batch, p))
+        new_model, info = self.model.apply_loss_fn(
+            loss_fn=lambda p: reverse_model_loss(self.model, batch, p, self.config, rng)
+        )
         return self.replace(model=new_model, rng=new_rng), info
 
     @jax.jit
     def select_elites(self, holdout_batch):
-        dist = self.model.select('reverse_dynamics')(holdout_batch['next_observations'], holdout_batch['actions'])
-        member_mse = jnp.square(dist.mean() - holdout_batch['observations'][None]).mean(axis=(1, 2))
+        if self.config.get('dynamics_type', 'gaussian') == 'rcfm':
+            rev_dm, rev_ds = self._delta_stats(reverse=True)
+            member_mse = rcfm_member_mse(
+                self.model,
+                'reverse_dynamics',
+                'reverse_dynamics_1step',
+                holdout_batch['next_observations'],
+                holdout_batch['actions'],
+                holdout_batch['observations'],
+                rev_dm,
+                rev_ds,
+                self.config['num_dynamics'],
+                self.config['rcfm_sample_mode'],
+                self.config['rcfm_ode_steps'],
+                self.rng,
+            )
+        else:
+            dist = self.model.select('reverse_dynamics')(holdout_batch['next_observations'], holdout_batch['actions'])
+            member_mse = jnp.square(dist.mean() - holdout_batch['observations'][None]).mean(axis=(1, 2))
         elites = jnp.argsort(member_mse)[: self.config['num_elites']].astype(jnp.int32)
-        _, model_info = reverse_model_loss(self.model, holdout_batch, None)
+        _, model_info = reverse_model_loss(self.model, holdout_batch, None, self.config, self.rng)
+        if self.config.get('dynamics_type', 'gaussian') == 'rcfm':
+            model_info['dynamics/dynamics_mse'] = member_mse.mean()
         info = {f'holdout/{k}': v for k, v in model_info.items()}
+        info.update({f'holdout/member_mse_{i}': member_mse[i] for i in range(self.config['num_dynamics'])})
         info['holdout/elite_mse'] = member_mse[elites].mean()
         return self.replace(elites=elites), info
 
@@ -93,14 +127,27 @@ class COMBOReverseSNISAgent(COMBOAgent):
         ex_obs, ex_actions = example_batch['observations'], example_batch['actions']
         ex_goals = example_batch['actor_goals'] if 'actor_goals' in example_batch else None
         model_def = ModuleDict(reverse_model_defs(agent.config, ob_dim, action_dim, agent.config['model_layer_norm']))
-        model_params = model_def.init(
-            model_rng,
-            reverse_dynamics=(ex_obs, ex_actions),
+        init_kwargs = dict(
             reverse_actor=(ex_obs, ex_goals),
             success=(ex_obs, ex_goals, ex_actions),
             reward=(ex_obs, ex_goals, ex_actions),
-        )['params']
-        model = TrainState.create(model_def, model_params, tx=optax.adam(learning_rate=agent.config['model_lr']))
+        )
+        if agent.config.get('dynamics_type', 'gaussian') == 'rcfm':
+            num_ens = agent.config['num_dynamics']
+            ex_x = jnp.zeros((num_ens, ex_obs.shape[0], ob_dim))
+            ex_t = jnp.zeros((num_ens, ex_obs.shape[0], 1))
+            init_kwargs['reverse_dynamics'] = (ex_obs, ex_actions, ex_x, ex_t)
+            init_kwargs['reverse_dynamics_1step'] = (ex_obs, ex_actions, ex_x)
+            model_tx = build_model_tx(
+                agent.config,
+                rcfm_keys=('modules_reverse_dynamics',),
+                frozen_keys=('modules_reverse_dynamics_1step',),
+            )
+        else:
+            init_kwargs['reverse_dynamics'] = (ex_obs, ex_actions)
+            model_tx = build_model_tx(agent.config)
+        model_params = model_def.init(model_rng, **init_kwargs)['params']
+        model = TrainState.create(model_def, model_params, tx=model_tx)
         return cls(agent.rng, network=agent.network, model=model, elites=agent.elites, config=agent.config)
 
 
