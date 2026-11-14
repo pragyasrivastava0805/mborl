@@ -409,7 +409,7 @@ class COMBOAgent(flax.struct.PyTreeNode):
             config: Configuration dictionary.
         """
         assert config['value_loss'] == 'squared', 'COMBO only supports the squared TD loss.'
-        assert config['conservative_states'] in ('mixture', 'model')
+        assert config['conservative_states'] in ('mixture', 'model', 'real')
         assert config['rollout_policy'] in ('policy', 'uniform')
         assert 0.0 <= config['real_ratio'] <= 1.0, 'real_ratio (f) must be in [0, 1].'
         assert not (config['conservative_states'] == 'model' and config['real_ratio'] == 1.0), (
