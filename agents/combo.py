@@ -179,7 +179,7 @@ class COMBOAgent(flax.struct.PyTreeNode):
         reward_loss = jnp.square(rewards - batch['rewards']).mean()
 
         loss = dynamics_loss + success_loss + reward_loss
-        return loss, {
+        info = {
             'dynamics/dynamics_loss': dynamics_loss,
             'dynamics/dynamics_mse': dynamics_mse,
             'success/success_loss': success_loss,
@@ -190,6 +190,12 @@ class COMBOAgent(flax.struct.PyTreeNode):
             'reward/reward_mean': rewards.mean(),
             'reward/data_reward_mean': batch['rewards'].mean(),
         }
+        if self.config['rollout_policy'] in ('behavior_snis', 'behavior_bon'):
+            fwd_act_dist = self.model.select('forward_actor')(batch['observations'], goals=goals, params=grad_params)
+            fwd_actor_loss = -fwd_act_dist.log_prob(jnp.clip(batch['actions'], -1.0 + 1e-5, 1.0 - 1e-5)).mean()
+            loss = loss + fwd_actor_loss
+            info['dynamics/forward_actor_loss'] = fwd_actor_loss
+        return loss, info
 
     @jax.jit
     def update_model(self, batch):
@@ -261,6 +267,74 @@ class COMBOAgent(flax.struct.PyTreeNode):
     # Model rollouts
     # ------------------------------------------------------------------ #
 
+    def _behavior_reg_rollout(self, batch, rng):
+        """Chunked forward rollouts from behavior-regularized policy pi_roll(a|s) ∝ mu^+(a|s) exp(Q(s,a)/beta)."""
+        H = int(self.config['rollout_steps'])
+        K = int(self.config['rollout_num_candidates'])
+        init_ob = batch['observations']
+        n = init_ob.shape[0]
+        value_goals = batch['value_goals'] if 'value_goals' in batch else None
+        chunk = int(min(self.config.get('rollout_chunk', 4096), n))
+        n_chunks = (n + chunk - 1) // chunk
+        pad_idx = jnp.arange(n_chunks * chunk) % n
+
+        def to_chunks(x):
+            return None if x is None else x[pad_idx].reshape((n_chunks, chunk) + x.shape[1:])
+
+        def rollout_chunk(xs):
+            ob0, vg, chunk_rng = xs
+
+            def rollout_step(carry, _):
+                ob, alive, step_rng = carry
+                step_rng, prop_rng, cat_rng, dyn_rng = jax.random.split(step_rng, 4)
+
+                # 1. Sample K candidate actions from frozen forward-BC mu^+(a|s) and score via target critic.
+                bc_dist = self.model.select('forward_actor')(ob, goals=vg)
+                cand = jnp.clip(bc_dist.sample(seed=prop_rng, sample_shape=(K,)), -1.0, 1.0)
+                ob_k = jnp.broadcast_to(ob[None], (K,) + ob.shape)
+                vg_k = None if vg is None else jnp.broadcast_to(vg[None], (K,) + vg.shape)
+                scores = self.aggregate(
+                    self.network.select('target_critic')(ob_k, goals=vg_k, actions=cand), self.config['q_agg']
+                )
+
+                # 2. Select action by Best-of-N (argmax) or SNIS (softmax(Q / beta)).
+                if self.config['rollout_policy'] == 'behavior_bon':
+                    j_star = jnp.argmax(scores, axis=0)
+                else:
+                    j_star = jax.random.categorical(cat_rng, scores / float(self.config['rollout_beta']), axis=0)
+                action = cand[j_star, jnp.arange(ob.shape[0])]
+
+                # 3. Step forward dynamics and label reward/termination identically to vanilla COMBO.
+                next_ob = self.sample_dynamics(ob, action, dyn_rng)
+                succ_logit = self.model.select('success')(ob, vg, action)
+                success = (jax.nn.sigmoid(succ_logit) > 0.5).astype(jnp.float32)
+                if vg is not None:
+                    rewards = success - (1.0 if self.config['gc_negative'] else 0.0)
+                else:
+                    rewards = self.model.select('reward')(ob, None, action)
+                    if self.config.get('clip_model_reward', False):
+                        rewards = jnp.clip(rewards, -1.0, 0.0)
+                next_alive = alive * (1.0 - success) if self.config['rollout_stop_on_terminal'] else alive
+                return (next_ob, next_alive, step_rng), {
+                    'observations': ob,
+                    'actions': action,
+                    'next_observations': next_ob,
+                    'rewards': rewards,
+                    'masks': 1.0 - success,
+                    'rollout_valid': alive,
+                }
+
+            _, chunk_data = jax.lax.scan(rollout_step, (ob0, jnp.ones((ob0.shape[0],)), chunk_rng), None, length=H)
+            return chunk_data
+
+        rngs = jax.random.split(rng, n_chunks)
+        data = jax.lax.map(rollout_chunk, (to_chunks(init_ob), to_chunks(value_goals), rngs))
+        data = {k: jnp.swapaxes(v, 0, 1).reshape((H, n_chunks * chunk) + v.shape[3:])[:, :n] for k, v in data.items()}
+        if value_goals is not None:
+            data['value_goals'] = jnp.repeat(batch['value_goals'][None], H, axis=0)
+            data['actor_goals'] = jnp.repeat(batch['actor_goals'][None], H, axis=0)
+        return {k: v.reshape((H * n,) + v.shape[2:]) for k, v in data.items()}
+
     @jax.jit
     def rollout(self, batch, rng):
         """Roll out the frozen model from dataset states (mirrors `MOBILEAgent.rollout`).
@@ -269,6 +343,9 @@ class COMBOAgent(flax.struct.PyTreeNode):
         horizon, and label transitions with the learned success classifier. Every field is flattened from (H, B, ...)
         to (H * B, ...). `rollout_valid` marks transitions to keep; it is all ones unless `rollout_stop_on_terminal`.
         """
+        if self.config['rollout_policy'] in ('behavior_snis', 'behavior_bon'):
+            return self._behavior_reg_rollout(batch, rng)
+
         H = self.config['rollout_steps']
         init_ob = batch['observations']
         batch_size = init_ob.shape[0]
@@ -546,7 +623,7 @@ class COMBOAgent(flax.struct.PyTreeNode):
         """
         assert config['value_loss'] == 'squared', 'COMBO only supports the squared TD loss.'
         assert config['conservative_states'] in ('mixture', 'model', 'real')
-        assert config['rollout_policy'] in ('policy', 'uniform')
+        assert config['rollout_policy'] in ('policy', 'uniform', 'behavior_snis', 'behavior_bon')
         assert 0.0 <= config['real_ratio'] <= 1.0, 'real_ratio (f) must be in [0, 1].'
         assert not (config['conservative_states'] == 'model' and config['real_ratio'] == 1.0), (
             "conservative_states='model' needs model data (real_ratio < 1)."
@@ -660,6 +737,17 @@ class COMBOAgent(flax.struct.PyTreeNode):
                 reward=(reward_def, (ex_observations, ex_goals, ex_actions)),
             )
             model_tx = build_model_tx(config)
+        if config['rollout_policy'] in ('behavior_snis', 'behavior_bon'):
+            forward_actor_def = GCActor(
+                hidden_dims=config['dynamics_hidden_dims'],
+                action_dim=action_dim,
+                layer_norm=config['model_layer_norm'],
+                tanh_squash=False,
+                state_dependent_std=True,
+                const_std=False,
+                final_fc_init_scale=0.01,
+            )
+            model_info['forward_actor'] = (forward_actor_def, (ex_observations, ex_goals))
         model_def = ModuleDict({k: v[0] for k, v in model_info.items()})
         model_params = model_def.init(model_rng, **{k: v[1] for k, v in model_info.items()})['params']
         model = TrainState.create(model_def, model_params, tx=model_tx)
@@ -728,7 +816,10 @@ def get_config(profile='ogbench'):
             beta=1.0,  # Conservative coefficient (paper candidates: 0.5, 1.0, 5.0).
             num_samples=10,  # Action samples per proposal (uniform and policy) for the log-sum-exp estimate.
             conservative_states='mixture',  # States for the push-down term ('mixture', 'model', or 'real').
-            rollout_policy='policy',  # Rollout policy ('policy' or 'uniform').
+            rollout_policy='policy',  # Rollout policy ('policy', 'uniform', 'behavior_snis', or 'behavior_bon').
+            rollout_num_candidates=16,  # K proposals from forward-BC mu^+(a|s) for behavior_bon / behavior_snis.
+            rollout_beta=1.0,  # Temperature beta in softmax(Q / beta) for behavior_snis rollouts.
+            rollout_chunk=4096,  # Chunk size for memory-bounded behavior_bon / behavior_snis rollouts.
             rollout_steps=5,  # Model rollout horizon.
             rollout_stop_on_terminal=False,  # Whether to drop transitions after a predicted termination.
             clip_model_reward=False,  # Whether to clip predicted single-task model rewards to [-1, 0].
