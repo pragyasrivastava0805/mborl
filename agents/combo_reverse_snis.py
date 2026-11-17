@@ -82,23 +82,84 @@ class COMBOReverseSNISAgent(COMBOAgent):
     def eval_v_pi_chunk(self, obs):
         return self.v_bar(obs)
 
+    @jax.jit
+    def score_pdl_anchors_chunk(self, anchor_ob, rng):
+        """Estimate U_rho(s) = mean_{h=1..H} [R_h + gamma^h M_h V_bar(s) - V_bar(s_h)] on a fixed-size anchor chunk."""
+        H = int(self.config['max_rollout_steps'])
+        discount = float(self.config['discount'])
+        chunk_n = anchor_ob.shape[0]
+
+        # 1. Generate H-step reverse rollouts tau^- | s under the current reverse policy rho.
+        roll = snis_reverse_rollout(self.model, self.elites, self.config, anchor_ob, None, None, self.v_bar, rng)
+        prev_ob = roll['observations'].reshape((H, chunk_n, -1))
+        next_ob = roll['next_observations'].reshape((H, chunk_n, -1))
+        rewards = roll['rewards'].reshape((H, chunk_n))
+        masks = roll['masks'].reshape((H, chunk_n))
+        valid = roll['rollout_valid'].reshape((H, chunk_n))
+
+        # 2. Compute telescoping anchor-backed advantages along tau^- and average over valid rollout steps.
+        v_prev = self.v_bar(prev_ob)
+        if self.config.get('backup_mode', 'single') == 'multi':
+            v_target = self.v_bar(anchor_ob)[None, :]
+        else:
+            v_target = self.v_bar(next_ob)
+        advantages = rewards + discount * masks * v_target - v_prev
+        return jnp.sum(advantages * valid, axis=0) / jnp.maximum(jnp.sum(valid, axis=0), 1.0)
+
+    def _sample_pdl_u_rho_indices(self, ds_dict, valid_idxs, dataset_size, mb_batch_size):
+        """Score a uniform pool of candidate anchors with U_rho(s) and resample via exp(anchor_beta * z(U_rho(s)))."""
+        n = len(valid_idxs)
+        pool_mult = max(1, int(self.config.get('anchor_pool_mult', 2)))
+        pool_size = mb_batch_size * pool_mult
+        pool_local = np.random.randint(0, n, size=pool_size)
+        pool_idxs = valid_idxs[pool_local]
+        if 'next_observations' in ds_dict:
+            cand_obs = ds_dict['next_observations'][pool_idxs]
+        else:
+            cand_obs = ds_dict['observations'][np.minimum(pool_idxs + 1, dataset_size - 1)]
+
+        # Pad the final chunk to a fixed static shape so score_pdl_anchors_chunk compiles once.
+        chunk_size = min(pool_size, int(self.config.get('rollout_chunk', 2048)))
+        n_chunks = (pool_size + chunk_size - 1) // chunk_size
+        chunk_keys = jax.random.split(jax.random.PRNGKey(int(np.random.randint(0, 2**31 - 1))), n_chunks)
+        scores = []
+        for idx, start in enumerate(range(0, pool_size, chunk_size)):
+            end = min(start + chunk_size, pool_size)
+            chunk_obs = cand_obs[start:end]
+            actual_len = end - start
+            if actual_len < chunk_size:
+                pad_obs = np.repeat(chunk_obs[-1:], chunk_size - actual_len, axis=0)
+                chunk_obs = np.concatenate([chunk_obs, pad_obs], axis=0)
+            chunk_u = np.asarray(self.score_pdl_anchors_chunk(chunk_obs, chunk_keys[idx]))[:actual_len]
+            scores.append(chunk_u)
+
+        utilities = np.concatenate(scores, axis=0).astype(np.float64)
+        z = np.clip((utilities - utilities.mean()) / max(utilities.std(), 1e-5), -5.0, 5.0)
+        logits = float(self.config['anchor_beta']) * z
+        probs = np.exp(logits - logits.max())
+        probs /= probs.sum()
+        chosen_in_pool = np.random.choice(pool_size, size=mb_batch_size, replace=True, p=probs)
+        return pool_local[chosen_in_pool]
+
     def sample_full_buffer_batch(self, train_dataset, mb_batch_size):
-        """Sample real-dataset anchors using 'exp_value', 'frontier', or 'uniform' weighting."""
+        """Sample real-dataset anchors using 'exp_value', 'frontier', 'pdl_u_rho', or 'uniform' weighting."""
         ds_dict = train_dataset.dataset._dict
         valid_idxs = getattr(train_dataset, 'valid_idxs', np.arange(train_dataset.size))
         if self.config.get('exclude_terminal_anchors', False) and 'masks' in ds_dict:
             non_term = valid_idxs[ds_dict['masks'][valid_idxs] > 0.5]
             if len(non_term) > 0:
                 valid_idxs = non_term
-        if 'next_observations' in ds_dict:
-            all_next_obs = ds_dict['next_observations'][valid_idxs]
-        else:
-            all_next_obs = ds_dict['observations'][np.minimum(valid_idxs + 1, train_dataset.size - 1)]
         n = len(valid_idxs)
         anchor_mode = self.config.get('anchor_mode', 'exp_value')
         if int(self.network.step) == 0 or anchor_mode == 'uniform':
             chosen = np.random.randint(0, n, size=mb_batch_size)
+        elif anchor_mode == 'pdl_u_rho':
+            chosen = self._sample_pdl_u_rho_indices(ds_dict, valid_idxs, train_dataset.size, mb_batch_size)
         else:
+            if 'next_observations' in ds_dict:
+                all_next_obs = ds_dict['next_observations'][valid_idxs]
+            else:
+                all_next_obs = ds_dict['observations'][np.minimum(valid_idxs + 1, train_dataset.size - 1)]
             v = np.concatenate([np.asarray(self.eval_v_pi_chunk(all_next_obs[s:s + 100000])) for s in range(0, n, 100000)])
             v = v.astype(np.float64)
             z = np.clip((v - v.mean()) / max(v.std(), 1e-5), -5.0, 5.0)
@@ -164,8 +225,9 @@ def get_config(profile='ogbench'):
             clip_model_reward=False,  # COMBO labels model rewards without clipping.
             backup_mode='single',  # 'single' (chained) or 'multi' (all synthetic states bootstrap on the real anchor).
             full_buffer_exp=True,  # main_mbpo.py then calls sample_full_buffer_batch for rollout anchors.
-            anchor_mode='exp_value',  # 'exp_value', 'frontier', or 'uniform'.
-            anchor_beta=3.0,  # P(anchor) ∝ exp(anchor_beta * z(V_pi(s))) when anchor_mode='exp_value'.
+            anchor_mode='exp_value',  # 'exp_value', 'frontier', 'pdl_u_rho', or 'uniform'.
+            anchor_beta=3.0,  # P(anchor) ∝ exp(anchor_beta * z(score)) for 'exp_value' or 'pdl_u_rho'.
+            anchor_pool_mult=2,  # Candidate anchor pool multiplier for 'pdl_u_rho' (pool = mult * mb_batch_size).
             anchor_target_z=0.5,  # Center z-score when anchor_mode='frontier'.
             anchor_band_std=0.75,  # Width in z-score units when anchor_mode='frontier'.
             exclude_terminal_anchors=False,  # Exclude transitions with masks <= 0.5 from reverse anchors.
