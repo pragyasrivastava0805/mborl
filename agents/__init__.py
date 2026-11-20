@@ -28,6 +28,7 @@ from agents.forward_morel_rebrac import ForwardMOReLReBRACAgent
 from agents.reverse_morel_rebrac import ReverseMOReLReBRACAgent
 from agents.combo import COMBOAgent
 from agents.combo_reverse_snis import COMBOReverseSNISAgent
+from agents.iql_reverse_snis import IQLReverseSNISAgent
 from agents.fmpc import FMPCAgent
 from agents.leq import LEQAgent
 from agents.mobile import MOBILEAgent
@@ -67,6 +68,7 @@ agents = dict(
     reverse_morel_rebrac=ReverseMOReLReBRACAgent,
     combo=COMBOAgent,
     combo_reverse_snis=COMBOReverseSNISAgent,
+    iql_reverse_snis=IQLReverseSNISAgent,
     fmpc=FMPCAgent,
     leq=LEQAgent,
     mobile=MOBILEAgent,

@@ -52,6 +52,7 @@ flags.DEFINE_integer('mb_batch_size', 50000, 'batch size for model rollouts')
 flags.DEFINE_integer('mb_retain_epoch', 5, 'retaining for model rollouts')
 flags.DEFINE_integer('mb_rollout_freq', 1000, 'freq for model rollouts')
 flags.DEFINE_float('mb_batch_ratio', 0.5, 'fraction f of each training batch drawn from the real dataset (agents with a real_ratio config use that instead)')
+flags.DEFINE_integer('staged_warmup_steps', 0, 'if > 0, train on pure real data for this many steps (Stage 0) before generating the first static rollout batch, then add one batch every mb_rollout_freq steps')
 
 config_flags.DEFINE_config_file('agent', 'agents/sharsa.py', lock_config=False)
 
@@ -240,19 +241,41 @@ def main(_):
         return train_dataset.sample(FLAGS.mb_batch_size)
 
     fake_buffer = None
-    for _ in range(FLAGS.mb_retain_epoch if use_model else 0):
-        rng, rollout_rng = jax.random.split(rng)
-        batch = sample_rollout_batch()
-        fake_buffer = add_rollouts(fake_buffer, agent.rollout(batch, rollout_rng))
+    if use_model:
+        if FLAGS.staged_warmup_steps > 0:
+            # Staged mode: keep fake_buffer=None through Stage 0; on resume past warmup, rebuild completed stage batches.
+            if epoch > FLAGS.staged_warmup_steps:
+                n_init = min(
+                    FLAGS.mb_retain_epoch,
+                    1 + (epoch - 1 - FLAGS.staged_warmup_steps) // max(1, FLAGS.mb_rollout_freq),
+                )
+                for _ in range(n_init):
+                    rng, rollout_rng = jax.random.split(rng)
+                    batch = sample_rollout_batch()
+                    fake_buffer = add_rollouts(fake_buffer, agent.rollout(batch, rollout_rng))
+        else:
+            for _ in range(FLAGS.mb_retain_epoch):
+                rng, rollout_rng = jax.random.split(rng)
+                batch = sample_rollout_batch()
+                fake_buffer = add_rollouts(fake_buffer, agent.rollout(batch, rollout_rng))
 
     for i in tqdm.tqdm(range(epoch+1, FLAGS.offline_steps + 1), smoothing=0.1, dynamic_ncols=True):
-        if use_model and i % FLAGS.mb_rollout_freq == 0:
-            rng, rollout_rng = jax.random.split(rng)
-            batch = sample_rollout_batch()
-            fake_buffer = add_rollouts(fake_buffer, agent.rollout(batch, rollout_rng))
+        if use_model:
+            if FLAGS.staged_warmup_steps > 0:
+                should_rollout = (
+                    i > FLAGS.staged_warmup_steps
+                    and (i - 1 - FLAGS.staged_warmup_steps) % FLAGS.mb_rollout_freq == 0
+                )
+            else:
+                should_rollout = i % FLAGS.mb_rollout_freq == 0
+            if should_rollout:
+                rng, rollout_rng = jax.random.split(rng)
+                batch = sample_rollout_batch()
+                fake_buffer = add_rollouts(fake_buffer, agent.rollout(batch, rollout_rng))
 
-        real_batch = train_dataset.sample(data_batch_size)
-        fake_batch = fake_buffer.sample(fake_batch_size) if use_model else None
+        in_real_stage = (not use_model) or (fake_buffer is None)
+        real_batch = train_dataset.sample(config['batch_size'] if (use_model and in_real_stage) else data_batch_size)
+        fake_batch = None if in_real_stage else fake_buffer.sample(fake_batch_size)
         agent, update_info = agent.update(real_batch, fake_batch)
 
         # Log metrics.
@@ -263,7 +286,7 @@ def main(_):
                 update_info.update({f'metrics/{k}': v for k, v in add_metrics.items()})
             train_metrics = {f'training/{k}': v for k, v in update_info.items()}
 
-            val_batch = val_dataset.sample(data_batch_size)
+            val_batch = val_dataset.sample(config['batch_size'] if (use_model and in_real_stage) else data_batch_size)
             _, val_info = agent.total_loss(val_batch, fake_batch, grad_params=None)
             train_metrics.update({f'validation/{k}': v for k, v in val_info.items()})
 
