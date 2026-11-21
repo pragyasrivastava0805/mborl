@@ -23,6 +23,29 @@ from utils.networks import (
 sg = lambda x: jax.lax.stop_gradient(x)
 
 
+def anchor_resampling_logits(log_w, transform='none', clip=20.0):
+    """Turn per-anchor log-weights (log rho*(s) / nu(s); -inf = excluded) into resampling logits.
+
+    Stabilisers borrowed from advantage-weighted policy extraction:
+      'none'     : exp(log_w) as-is (exact rho*).
+      'clip'     : min(exp(log_w), clip), the weight cap of AWR / IQL.
+      'norm_clip': standardise log_w over the pool, then min(exp(z), clip), as in AWR's normalised advantages.
+      'binary'   : uniform over anchors with log_w > 0 (A_hat > 0 for 'real'), CRR's indicator weight.
+    """
+    finite = np.isfinite(log_w)
+    if not finite.any():
+        return np.zeros_like(log_w)
+    if transform == 'binary':
+        pos = finite & (log_w > 0)
+        return np.where(pos if pos.any() else finite, 0.0, -np.inf)
+    if transform == 'norm_clip':
+        f = log_w[finite]
+        log_w = (log_w - f.mean()) / max(f.std(), 1e-5)
+    if transform in ('clip', 'norm_clip'):
+        log_w = np.minimum(log_w, np.log(clip))
+    return log_w
+
+
 def snis_reverse_rollout(model, elites, config, anchor_ob, value_goals, actor_goals, v_bar_fn, rng):
     """Self-normalized importance-sampling (SNIS) reverse rollouts from `anchor_ob`.
 
@@ -44,6 +67,11 @@ def snis_reverse_rollout(model, elites, config, anchor_ob, value_goals, actor_go
     K = int(config['num_rev_candidates'])
     M = int(min(config['num_mc_predecessors'], config['num_elites']))
     beta = float(config['snis_beta'])
+    anchor_temp = float(config.get('anchor_lme_temp') or beta)
+    anchor_unc_coef = float(config.get('anchor_unc_coef', 0.0))
+    anchor_unc_quantile = float(config.get('anchor_unc_quantile', 1.0))
+    anchor_score = config.get('anchor_score', 'lme')
+    anchor_ens_coef = float(config.get('anchor_ens_coef', 1.0))
     discount = config['discount']
     clip_reward = bool(config.get('clip_model_reward', False))
     gc_negative = bool(config['gc_negative'])
@@ -110,7 +138,29 @@ def snis_reverse_rollout(model, elites, config, anchor_ob, value_goals, actor_go
             r_jm, m_jm = labels(s_jm, vg_m, cand_m)
             v_x = v_bar_fn(x, vg, ag)[None, None]  # (1, 1, C)
             v_s = v_bar_fn(s_jm, vg_m, ag_m)  # (M, K, C)
-            d_hat = jnp.mean(r_jm + discount * m_jm * v_x - v_s, axis=0)  # (K, C)
+            adv_jm = r_jm + discount * m_jm * v_x - v_s  # (M, K, C)
+            d_hat = jnp.mean(adv_jm, axis=0)  # (K, C)
+            # Anchor log-weight beta' * G(x) = log E_{(s, a) ~ P^-_mu(.|x)} exp(A_hat(s, a, x) / anchor_temp), the log-normaliser
+            # of rho*(a, s | x) when anchor_temp = beta (beta' = 1 / anchor_temp). Averages over all K * M joint predecessor
+            # samples, not over D_j. A larger anchor_temp flattens the anchor distribution.
+            # Model uncertainty: the spread of A_hat across the M elite predecessors of each a_j, subtracted as a lower
+            # confidence bound so predecessors the ensemble disagrees on cannot dominate the weight.
+            adv_std = jnp.std(adv_jm, axis=0)  # (K, C)
+            logw_jm = (adv_jm - anchor_unc_coef * adv_std[None]) / anchor_temp  # (M, K, C)
+            if anchor_score == 'ens_lcb':
+                # Each elite member m gives its own expected advantage S_m = E_{(s, a) ~ P_m(.|x)} A_hat(s, a, x) over its K
+                # predecessors; the anchor score is the ensemble mean of S_m minus anchor_ens_coef times their std.
+                s_m = jnp.mean(adv_jm, axis=1)  # (M, C)
+                anchor_log_w = (jnp.mean(s_m, axis=0) - anchor_ens_coef * jnp.std(s_m, axis=0)) / anchor_temp  # (C,)
+            elif anchor_unc_quantile < 1.0:
+                # Take the expectation only over (s, a) pairs whose ensemble spread is below the chunk-wide quantile; an
+                # anchor with no reliable predecessor gets weight 0 (log-weight -inf).
+                keep = adv_std <= jnp.quantile(adv_std, anchor_unc_quantile)  # (K, C)
+                n_keep = M * jnp.sum(keep, axis=0)  # (C,)
+                logw_jm = jnp.where(keep[None], logw_jm, -jnp.inf)
+                anchor_log_w = jax.scipy.special.logsumexp(logw_jm, axis=(0, 1)) - jnp.log(jnp.maximum(n_keep, 1))  # (C,)
+            else:
+                anchor_log_w = jax.scipy.special.logsumexp(logw_jm, axis=(0, 1)) - jnp.log(float(K * M))  # (C,)
 
             # 3. Resample one proposal per state with weights softmax(D / beta).
             logits = d_hat / beta
@@ -140,6 +190,7 @@ def snis_reverse_rollout(model, elites, config, anchor_ob, value_goals, actor_go
                 'rewards': out_r,
                 'masks': out_m,
                 'rollout_valid': alive,
+                'anchor_log_w': anchor_log_w,
             }
             # Reaching a predicted goal state ends the backward chain (its predecessors would bootstrap from a terminal).
             return (prev, alive * masks, new_cum_r, new_cum_d, rng), out

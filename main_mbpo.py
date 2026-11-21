@@ -216,6 +216,7 @@ def main(_):
         # Rollouts are already in normalized model coordinates; add them without rescaling.
         fake_batch = {k: np.asarray(v) for k, v in fake_batch.items()}
         fake_batch.pop('step_next_observations', None)
+        fake_batch.pop('anchor_log_w', None)
         if 'rollout_valid' in fake_batch:
             keep = fake_batch.pop('rollout_valid') > 0
             if np.any(keep):

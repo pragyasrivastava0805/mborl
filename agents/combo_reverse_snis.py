@@ -6,7 +6,12 @@ import ml_collections
 import optax
 
 from agents.combo import COMBOAgent, build_model_tx, get_config as combo_get_config
-from agents.reverse_rollouts_snis import reverse_model_defs, reverse_model_loss, snis_reverse_rollout
+from agents.reverse_rollouts_snis import (
+    anchor_resampling_logits,
+    reverse_model_defs,
+    reverse_model_loss,
+    snis_reverse_rollout,
+)
 from utils.flax_utils import ModuleDict, TrainState
 from utils.networks import rcfm_member_mse
 
@@ -84,7 +89,17 @@ class COMBOReverseSNISAgent(COMBOAgent):
 
     @jax.jit
     def score_pdl_anchors_chunk(self, anchor_ob, rng):
-        """Estimate U_rho(s) = mean_{h=1..H} [R_h + gamma^h M_h V_bar(s) - V_bar(s_h)] on a fixed-size anchor chunk."""
+        """Score anchors on a fixed-size chunk.
+
+        'lme' (default): log anchor weight beta' G(s) = log E_{(s', a) ~ P^-_mu(.|s)} exp(beta' A_hat(s', a, s)), with
+            A_hat = r(s', a) + gamma m(s', a) V_bar(s) - V_bar(s') and beta' = 1 / snis_beta, so rho*(s) ∝ nu(s) exp(beta' G(s)).
+        'sample': U_rho(s) = mean_{h=1..H} [R_h + gamma^h M_h V_bar(s) - V_bar(s_h)] along one SNIS reverse rollout.
+        """
+        if self.config.get('u_rho_estimator', 'lme') == 'lme':
+            # Only the anchor's own predecessor samples are scored, so a single-step rollout suffices.
+            config = dict(self.config, max_rollout_steps=1)
+            return snis_reverse_rollout(self.model, self.elites, config, anchor_ob, None, None, self.v_bar, rng)['anchor_log_w']
+
         H = int(self.config['max_rollout_steps'])
         discount = float(self.config['discount'])
         chunk_n = anchor_ob.shape[0]
@@ -118,24 +133,42 @@ class COMBOReverseSNISAgent(COMBOAgent):
         else:
             cand_obs = ds_dict['observations'][np.minimum(pool_idxs + 1, dataset_size - 1)]
 
-        # Pad the final chunk to a fixed static shape so score_pdl_anchors_chunk compiles once.
-        chunk_size = min(pool_size, int(self.config.get('rollout_chunk', 2048)))
-        n_chunks = (pool_size + chunk_size - 1) // chunk_size
-        chunk_keys = jax.random.split(jax.random.PRNGKey(int(np.random.randint(0, 2**31 - 1))), n_chunks)
-        scores = []
-        for idx, start in enumerate(range(0, pool_size, chunk_size)):
-            end = min(start + chunk_size, pool_size)
-            chunk_obs = cand_obs[start:end]
-            actual_len = end - start
-            if actual_len < chunk_size:
-                pad_obs = np.repeat(chunk_obs[-1:], chunk_size - actual_len, axis=0)
-                chunk_obs = np.concatenate([chunk_obs, pad_obs], axis=0)
-            chunk_u = np.asarray(self.score_pdl_anchors_chunk(chunk_obs, chunk_keys[idx]))[:actual_len]
-            scores.append(chunk_u)
+        estimator = self.config.get('u_rho_estimator', 'lme')
+        if estimator == 'real':
+            # Each candidate's logged transition (s, a, r, s') is a real draw from P^-_mu(.|s'), so exp(A_hat / temp) is an
+            # unbiased, model-free estimate of the rho* anchor weight exp(beta' G(s')); V is only queried on dataset states.
+            temp = float(self.config.get('anchor_lme_temp') or self.config['snis_beta'])
+            v_next = np.asarray(self.eval_v_pi_chunk(cand_obs))
+            v_prev = np.asarray(self.eval_v_pi_chunk(ds_dict['observations'][pool_idxs]))
+            masks = ds_dict['masks'][pool_idxs]
+            adv = ds_dict['rewards'][pool_idxs] + float(self.config['discount']) * masks * v_next - v_prev
+            utilities = (adv / temp).astype(np.float64)
+        else:
+            # Pad the final chunk to a fixed static shape so score_pdl_anchors_chunk compiles once.
+            chunk_size = min(pool_size, int(self.config.get('rollout_chunk', 2048)))
+            n_chunks = (pool_size + chunk_size - 1) // chunk_size
+            chunk_keys = jax.random.split(jax.random.PRNGKey(int(np.random.randint(0, 2**31 - 1))), n_chunks)
+            scores = []
+            for idx, start in enumerate(range(0, pool_size, chunk_size)):
+                end = min(start + chunk_size, pool_size)
+                chunk_obs = cand_obs[start:end]
+                actual_len = end - start
+                if actual_len < chunk_size:
+                    pad_obs = np.repeat(chunk_obs[-1:], chunk_size - actual_len, axis=0)
+                    chunk_obs = np.concatenate([chunk_obs, pad_obs], axis=0)
+                chunk_u = np.asarray(self.score_pdl_anchors_chunk(chunk_obs, chunk_keys[idx]))[:actual_len]
+                scores.append(chunk_u)
 
-        utilities = np.concatenate(scores, axis=0).astype(np.float64)
-        z = np.clip((utilities - utilities.mean()) / max(utilities.std(), 1e-5), -5.0, 5.0)
-        logits = float(self.config['anchor_beta']) * z
+            utilities = np.concatenate(scores, axis=0).astype(np.float64)
+        if estimator in ('lme', 'real'):
+            # Scores are already log weights of rho*(s) / nu(s); the uniform pool is nu, so resample with them as-is.
+            # Anchors whose predecessors were all filtered as too uncertain carry -inf and are never chosen.
+            logits = anchor_resampling_logits(
+                utilities, self.config.get('anchor_weight_transform', 'none'), float(self.config.get('anchor_weight_clip', 20.0))
+            )
+        else:
+            z = np.clip((utilities - utilities.mean()) / max(utilities.std(), 1e-5), -5.0, 5.0)
+            logits = float(self.config['anchor_beta']) * z
         probs = np.exp(logits - logits.max())
         probs /= probs.sum()
         chosen_in_pool = np.random.choice(pool_size, size=mb_batch_size, replace=True, p=probs)
@@ -169,6 +202,16 @@ class COMBOReverseSNISAgent(COMBOAgent):
                 logits = -0.5 * ((z - target_z) / band_std) ** 2
             else:
                 logits = float(self.config['anchor_beta']) * z
+                adv_beta = float(self.config.get('anchor_adv_beta', 0.0))
+                if adv_beta > 0:
+                    # Value stays the main signal; the anchor's logged one-step advantage r + gamma m V(s') - V(s) (model-free,
+                    # V only on dataset states) breaks ties, z-scored and clipped to +-3 so TD-error outliers cannot dominate.
+                    prev_obs = ds_dict['observations'][valid_idxs]
+                    v_prev = np.concatenate([np.asarray(self.eval_v_pi_chunk(prev_obs[s:s + 100000])) for s in range(0, n, 100000)])
+                    masks = ds_dict['masks'][valid_idxs]
+                    adv = ds_dict['rewards'][valid_idxs] + float(self.config['discount']) * masks * v - v_prev
+                    z_adv = np.clip((adv - adv.mean()) / max(adv.std(), 1e-5), -3.0, 3.0)
+                    logits = logits + adv_beta * z_adv
             p = np.exp(logits - logits.max())
             chosen = np.random.choice(n, size=mb_batch_size, replace=True, p=p / p.sum())
         return train_dataset.sample(mb_batch_size, idxs=valid_idxs[chosen])
@@ -226,8 +269,17 @@ def get_config(profile='ogbench'):
             backup_mode='single',  # 'single' (chained) or 'multi' (all synthetic states bootstrap on the real anchor).
             full_buffer_exp=True,  # main_mbpo.py then calls sample_full_buffer_batch for rollout anchors.
             anchor_mode='exp_value',  # 'exp_value', 'frontier', 'pdl_u_rho', or 'uniform'.
-            anchor_beta=3.0,  # P(anchor) ∝ exp(anchor_beta * z(score)) for 'exp_value' or 'pdl_u_rho'.
+            anchor_beta=3.0,  # P(anchor) ∝ exp(anchor_beta * z(score)) for 'exp_value', or 'pdl_u_rho' with u_rho_estimator='sample'.
             anchor_pool_mult=2,  # Candidate anchor pool multiplier for 'pdl_u_rho' (pool = mult * mb_batch_size).
+            u_rho_estimator='lme',  # 'pdl_u_rho' score: 'lme' (log-mean-exp model-predecessor advantage), 'real' (logged predecessor), or 'sample'.
+            anchor_lme_temp=2.0,  # Temperature of the 'lme' anchor weight mean exp(A_hat / temp); snis_beta gives exact rho*.
+            anchor_unc_coef=0.0,  # 'lme' anchors: A_hat - coef * std over elite predecessors (model-uncertainty LCB).
+            anchor_unc_quantile=1.0,  # 'lme' anchors: average only over (s, a) with ensemble std of A_hat below this quantile.
+            anchor_score='lme',  # 'lme' anchor log-weight: 'lme' (log-mean-exp A_hat) or 'ens_lcb' (mean_m S_m - coef * std_m S_m).
+            anchor_ens_coef=1.0,  # 'ens_lcb': weight on the std across elites of the per-member expected advantage S_m.
+            anchor_weight_transform='none',  # 'lme'/'real' anchor weights: 'none', 'clip', 'norm_clip' (AWR) or 'binary' (CRR).
+            anchor_weight_clip=20.0,  # Weight cap for 'clip' / 'norm_clip'.
+            anchor_adv_beta=0.0,  # 'exp_value': add anchor_adv_beta * clip(z(logged A_hat), +-3) to the value logits (0 = exp_value).
             anchor_target_z=0.5,  # Center z-score when anchor_mode='frontier'.
             anchor_band_std=0.75,  # Width in z-score units when anchor_mode='frontier'.
             exclude_terminal_anchors=False,  # Exclude transitions with masks <= 0.5 from reverse anchors.
