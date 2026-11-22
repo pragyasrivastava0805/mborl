@@ -8,6 +8,7 @@ import optax
 from agents.combo import COMBOAgent, build_model_tx, get_config as combo_get_config
 from agents.reverse_rollouts_snis import (
     anchor_resampling_logits,
+    reverse_actor_init_args,
     reverse_model_defs,
     reverse_model_loss,
     snis_reverse_rollout,
@@ -232,7 +233,7 @@ class COMBOReverseSNISAgent(COMBOAgent):
         ex_goals = example_batch['actor_goals'] if 'actor_goals' in example_batch else None
         model_def = ModuleDict(reverse_model_defs(agent.config, ob_dim, action_dim, agent.config['model_layer_norm']))
         init_kwargs = dict(
-            reverse_actor=(ex_obs, ex_goals),
+            reverse_actor=reverse_actor_init_args(agent.config, ex_obs, ex_goals, ex_actions),
             success=(ex_obs, ex_goals, ex_actions),
             reward=(ex_obs, ex_goals, ex_actions),
         )
@@ -260,6 +261,9 @@ def get_config(profile='ogbench'):
     config.update(
         dict(
             agent_name='combo_reverse_snis',
+            reverse_actor_type='gaussian',  # 'gaussian' (unimodal diag Gaussian) or 'flow' (conditional flow-matching ODE).
+            reverse_actor_flow_steps=10,
+            reverse_actor_time_half_dim=16,
             num_rev_candidates=16,  # K
             num_mc_predecessors=5,  # M (<= num_elites)
             snis_beta=0.5,  # beta in softmax(D / beta)

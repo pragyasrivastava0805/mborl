@@ -11,6 +11,7 @@ import optax
 
 from utils.flax_utils import ModuleDict, TrainState, nonpytree_field
 from utils.networks import (
+    ActorVectorField,
     Dynamics,
     GCActor,
     GCValue,
@@ -18,6 +19,7 @@ from utils.networks import (
     ResidualFlowEnsemble,
     rcfm_flow_loss,
     rcfm_sample_all,
+    sinusoidal_time_emb,
 )
 
 sg = lambda x: jax.lax.stop_gradient(x)
@@ -133,9 +135,29 @@ def snis_reverse_rollout(model, elites, config, anchor_ob, value_goals, actor_go
             x, alive, cum_r, cum_d, rng = carry
             rng, prop_rng, mc_rng, cat_rng, fresh_rng, member_rng = jax.random.split(rng, 6)
 
-            # 1. K proposals from the reverse-BC policy.
-            bc_dist = model.select('reverse_actor')(x, goals=vg)
-            cand = jnp.clip(bc_dist.sample(seed=prop_rng, sample_shape=(K,)), -1.0, 1.0)  # (K, C, A)
+            # 1. K proposals from the reverse-BC policy (Gaussian or conditional flow-matching ODE).
+            if config.get('reverse_actor_type', 'gaussian') == 'flow':
+                action_dim = int(config['action_dim'])
+                n_steps = int(config.get('reverse_actor_flow_steps', 10))
+                half_dim = int(config.get('reverse_actor_time_half_dim', 16))
+                x_k_act = jnp.broadcast_to(x[None], (K,) + x.shape)
+                vg_k_act = None if vg is None else jnp.broadcast_to(vg[None], (K,) + vg.shape)
+                a0 = jax.random.normal(prop_rng, (K, x.shape[0], action_dim))
+                dt = 1.0 / n_steps
+                ts = jnp.arange(n_steps, dtype=jnp.float32) * dt
+                rev_actor_fn = model.select('reverse_actor')
+
+                def _flow_step(a_cur, ti):
+                    t_arr = jnp.full(a_cur.shape[:-1] + (1,), ti)
+                    t_emb = sinusoidal_time_emb(t_arr, half_dim)
+                    vel = rev_actor_fn(x_k_act, goals=vg_k_act, actions=a_cur, times=t_emb)
+                    return a_cur + dt * vel, None
+
+                cand_raw, _ = jax.lax.scan(_flow_step, a0, ts)
+                cand = jnp.clip(cand_raw, -1.0, 1.0)  # (K, C, A)
+            else:
+                bc_dist = model.select('reverse_actor')(x, goals=vg)
+                cand = jnp.clip(bc_dist.sample(seed=prop_rng, sample_shape=(K,)), -1.0, 1.0)  # (K, C, A)
 
             # 2. M predecessors per proposal, one from each of M elite members (a single ensemble forward pass).
             x_k = jnp.broadcast_to(x[None], (K,) + x.shape)
@@ -243,8 +265,22 @@ def reverse_model_loss(model, batch, grad_params, config=None, rng=None):
         dynamics_loss = -rev_dist.log_prob(batch['observations'][None]).mean()
         dynamics_mse = jnp.square(rev_dist.mean() - batch['observations'][None]).mean()
 
-    rev_act_dist = model.select('reverse_actor')(batch['next_observations'], goals=goals, params=grad_params)
-    rev_actor_loss = -rev_act_dist.log_prob(jnp.clip(batch['actions'], -1.0 + 1e-5, 1.0 - 1e-5)).mean()
+    if config is not None and config.get('reverse_actor_type', 'gaussian') == 'flow':
+        act_rng = jax.random.fold_in(rng, 1)
+        ax_rng, at_rng = jax.random.split(act_rng)
+        a_target = jnp.clip(batch['actions'], -1.0, 1.0)
+        a0 = jax.random.normal(ax_rng, a_target.shape)
+        t = jax.random.uniform(at_rng, a_target.shape[:-1] + (1,))
+        a_t = (1.0 - t) * a0 + t * a_target
+        vel_target = a_target - a0
+        t_emb = sinusoidal_time_emb(t, int(config.get('reverse_actor_time_half_dim', 16)))
+        vel_pred = model.select('reverse_actor')(
+            batch['next_observations'], goals=goals, actions=a_t, times=t_emb, params=grad_params
+        )
+        rev_actor_loss = jnp.mean((vel_pred - vel_target) ** 2)
+    else:
+        rev_act_dist = model.select('reverse_actor')(batch['next_observations'], goals=goals, params=grad_params)
+        rev_actor_loss = -rev_act_dist.log_prob(jnp.clip(batch['actions'], -1.0 + 1e-5, 1.0 - 1e-5)).mean()
 
     succ_logit = model.select('success')(batch['observations'], goals, batch['actions'], params=grad_params)
     success_target = 1 - batch['masks']
@@ -266,9 +302,28 @@ def reverse_model_loss(model, batch, grad_params, config=None, rng=None):
     }
 
 
+def reverse_actor_init_args(config, ex_obs, ex_goals, ex_actions):
+    """Return initialization positional args matching the chosen reverse_actor module."""
+    rev_type = config.get('reverse_actor_type', 'gaussian')
+    if rev_type == 'flow':
+        half_dim = int(config.get('reverse_actor_time_half_dim', 16))
+        ex_t_emb = jnp.zeros(ex_obs.shape[:-1] + (2 * half_dim,), dtype=jnp.float32)
+        return (ex_obs, ex_goals, ex_actions, ex_t_emb)
+    if rev_type != 'gaussian':
+        raise ValueError(f"Unsupported reverse_actor_type: {rev_type!r} (expected 'gaussian' or 'flow').")
+    return (ex_obs, ex_goals)
+
+
 def reverse_model_defs(config, ob_dim, action_dim, layer_norm):
-    defs = dict(
-        reverse_actor=GCActor(
+    rev_type = config.get('reverse_actor_type', 'gaussian')
+    if rev_type == 'flow':
+        rev_actor_def = ActorVectorField(
+            hidden_dims=config['dynamics_hidden_dims'],
+            action_dim=action_dim,
+            layer_norm=layer_norm,
+        )
+    elif rev_type == 'gaussian':
+        rev_actor_def = GCActor(
             hidden_dims=config['dynamics_hidden_dims'],
             action_dim=action_dim,
             layer_norm=layer_norm,
@@ -276,7 +331,11 @@ def reverse_model_defs(config, ob_dim, action_dim, layer_norm):
             state_dependent_std=True,
             const_std=False,
             final_fc_init_scale=0.01,
-        ),
+        )
+    else:
+        raise ValueError(f"Unsupported reverse_actor_type: {rev_type!r} (expected 'gaussian' or 'flow').")
+    defs = dict(
+        reverse_actor=rev_actor_def,
         success=GCValue(hidden_dims=config['dynamics_hidden_dims'], layer_norm=layer_norm, num_ensembles=1),
         reward=GCValue(hidden_dims=config['dynamics_hidden_dims'], layer_norm=layer_norm, num_ensembles=1),
     )
@@ -324,7 +383,9 @@ class ReverseRolloutsSNISAgent(flax.struct.PyTreeNode):
     @jax.jit
     def update_model(self, batch):
         new_rng, rng = jax.random.split(self.rng)
-        new_model, info = self.model.apply_loss_fn(loss_fn=lambda p: reverse_model_loss(self.model, batch, p))
+        new_model, info = self.model.apply_loss_fn(
+            loss_fn=lambda p: reverse_model_loss(self.model, batch, p, self.config, rng)
+        )
         return self.replace(model=new_model, rng=new_rng), info
 
     @jax.jit
@@ -332,7 +393,7 @@ class ReverseRolloutsSNISAgent(flax.struct.PyTreeNode):
         dist = self.model.select('reverse_dynamics')(holdout_batch['next_observations'], holdout_batch['actions'])
         member_mse = jnp.square(dist.mean() - holdout_batch['observations'][None]).mean(axis=(1, 2))
         elites = jnp.argsort(member_mse)[: self.config['num_elites']].astype(jnp.int32)
-        _, model_info = reverse_model_loss(self.model, holdout_batch, None)
+        _, model_info = reverse_model_loss(self.model, holdout_batch, None, self.config, self.rng)
         info = {f'holdout/{k}': v for k, v in model_info.items()}
         info['holdout/elite_mse'] = member_mse[elites].mean()
         return self.replace(elites=elites), info
@@ -512,7 +573,7 @@ class ReverseRolloutsSNISAgent(flax.struct.PyTreeNode):
         defs = reverse_model_defs(config, ob_dim, action_dim, config['layer_norm'])
         model_args = dict(
             reverse_dynamics=(ex_obs, ex_actions),
-            reverse_actor=(ex_obs, ex_goals),
+            reverse_actor=reverse_actor_init_args(config, ex_obs, ex_goals, ex_actions),
             success=(ex_obs, ex_goals, ex_actions),
             reward=(ex_obs, ex_goals, ex_actions),
         )
@@ -550,6 +611,9 @@ def get_config():
             num_elites=5,
             model_train_steps=100000,
             model_holdout_size=1000,
+            reverse_actor_type='gaussian',  # 'gaussian' (unimodal diag Gaussian) or 'flow' (conditional flow-matching ODE).
+            reverse_actor_flow_steps=10,
+            reverse_actor_time_half_dim=16,
             # SNIS reverse rollouts.
             num_rev_candidates=16,  # K
             num_mc_predecessors=5,  # M (<= num_elites; one predecessor per elite member)

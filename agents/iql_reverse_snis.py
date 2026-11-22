@@ -12,6 +12,7 @@ import optax
 from agents.combo import build_model_tx
 from agents.reverse_rollouts_snis import (
     anchor_resampling_logits,
+    reverse_actor_init_args,
     reverse_model_defs,
     reverse_model_loss,
     snis_reverse_rollout,
@@ -466,7 +467,7 @@ class IQLReverseSNISAgent(flax.struct.PyTreeNode):
 
         defs = reverse_model_defs(config, ob_dim, action_dim, config['model_layer_norm'])
         init_kwargs = dict(
-            reverse_actor=(ex_obs, ex_goals),
+            reverse_actor=reverse_actor_init_args(config, ex_obs, ex_goals, ex_actions),
             success=(ex_obs, ex_goals, ex_actions),
             reward=(ex_obs, ex_goals, ex_actions),
         )
@@ -522,6 +523,9 @@ def get_config():
             num_elites=5,
             model_train_steps=100000,
             model_holdout_size=1000,
+            reverse_actor_type='gaussian',  # 'gaussian' (unimodal diag Gaussian) or 'flow' (conditional flow-matching ODE).
+            reverse_actor_flow_steps=10,
+            reverse_actor_time_half_dim=16,
             dynamics_type='rcfm',
             rcfm_hidden_dims=(512, 512, 512, 512),
             rcfm_layer_norm=True,
