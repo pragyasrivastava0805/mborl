@@ -27,10 +27,12 @@ def anchor_resampling_logits(log_w, transform='none', clip=20.0):
     """Turn per-anchor log-weights (log rho*(s) / nu(s); -inf = excluded) into resampling logits.
 
     Stabilisers borrowed from advantage-weighted policy extraction:
-      'none'     : exp(log_w) as-is (exact rho*).
-      'clip'     : min(exp(log_w), clip), the weight cap of AWR / IQL.
-      'norm_clip': standardise log_w over the pool, then min(exp(z), clip), as in AWR's normalised advantages.
-      'binary'   : uniform over anchors with log_w > 0 (A_hat > 0 for 'real'), CRR's indicator weight.
+      'none'       : exp(log_w) as-is (exact rho*).
+      'clip'       : min(exp(log_w), clip), the weight cap of AWR / IQL.
+      'norm_clip'  : standardise log_w over the pool, then min(exp(z), clip), as in AWR's normalised advantages.
+      'robust_clip': standardise via median and normal-consistent IQR ((q75 - q25) / 1.349) so heavy-tail
+                     TD-error outliers cannot inflate the scale and flatten the bulk, then cap exp(z) at clip.
+      'binary'     : uniform over anchors with log_w > 0 (A_hat > 0 for 'real'), CRR's indicator weight.
     """
     finite = np.isfinite(log_w)
     if not finite.any():
@@ -41,7 +43,14 @@ def anchor_resampling_logits(log_w, transform='none', clip=20.0):
     if transform == 'norm_clip':
         f = log_w[finite]
         log_w = (log_w - f.mean()) / max(f.std(), 1e-5)
-    if transform in ('clip', 'norm_clip'):
+    elif transform == 'robust_clip':
+        f = log_w[finite]
+        med = float(np.median(f))
+        scale = float(np.percentile(f, 75) - np.percentile(f, 25)) / 1.3489795003921634
+        if scale < 1e-5:
+            scale = max(float(f.std()), 1e-5)
+        log_w = (log_w - med) / scale
+    if transform in ('clip', 'norm_clip', 'robust_clip'):
         log_w = np.minimum(log_w, np.log(clip))
     return log_w
 

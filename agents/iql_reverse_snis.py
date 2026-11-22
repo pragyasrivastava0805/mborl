@@ -553,8 +553,8 @@ def get_config():
             anchor_unc_quantile=1.0,  # 'lme' anchors: average only over (s, a) with ensemble std of A_hat below this quantile.
             anchor_score='lme',  # 'lme' anchor log-weight: 'lme' (log-mean-exp A_hat) or 'ens_lcb' (mean_m S_m - coef * std_m S_m).
             anchor_ens_coef=1.0,  # 'ens_lcb': weight on the std across elites of the per-member expected advantage S_m.
-            anchor_weight_transform='none',  # 'lme'/'real' anchor weights: 'none', 'clip', 'norm_clip' (AWR) or 'binary' (CRR).
-            anchor_weight_clip=20.0,  # Weight cap for 'clip' / 'norm_clip'.
+            anchor_weight_transform='none',  # 'lme'/'real' anchor weights: 'none', 'clip', 'norm_clip' (AWR), 'robust_clip' (median/IQR), or 'binary' (CRR).
+            anchor_weight_clip=20.0,  # Weight cap for 'clip' / 'norm_clip' / 'robust_clip'.
             anchor_adv_beta=0.0,  # 'exp_value': add anchor_adv_beta * clip(z(logged A_hat), +-3) to the value logits (0 = exp_value).
             anchor_target_z=0.5,
             anchor_band_std=0.75,
