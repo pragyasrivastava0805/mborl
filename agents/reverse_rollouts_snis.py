@@ -67,6 +67,14 @@ def snis_reverse_rollout(model, elites, config, anchor_ob, value_goals, actor_go
       3. Resample j* ~ Categorical(softmax(D / beta)). This approximates rho*(a | x) ∝ mu^-(a | x) exp(D(x, a) / beta).
       4. Draw a fresh predecessor s ~ P^-(. | x, a_j*) from a random elite, store (s, a_j*, r, x) and set x <- s.
 
+    Action/predecessor sampling modes (config['snis_mode'], beta = config['snis_beta'] is a denominator temperature tau):
+      'mean'  : (default) score a_j via mean_m(A_jm) / tau, then draw a fresh unweighted predecessor from a random elite.
+      'tilted': two-stage Gibbs with fresh redraw: score a_j via logsumexp_m(A_jm / tau) - log(M), then draw M fresh
+                elite predecessors given a_j* and resample s_m* ~ softmax_m(A(s_m, a_j*) / tau).
+      'joint' : two-stage Gibbs reusing the (M, K) candidates (no second dynamics pass): score a_j via
+                logsumexp_m(A_jm / tau) - log(M), then sample m* ~ softmax_m(A_{m, j*} / tau) from s_jm[:, j*].
+                Algebraically identical to joint SNIS P(j*, m*) ∝ exp(A_{m, j} / tau) over all K * M pairs.
+
     Backup modes (config['backup_mode']):
       'single': chained transitions (s_k, a_k, r_k, s_{k-1}); only the first reverse transition uses the real anchor.
       'multi' : every synthetic state bootstraps directly on the real anchor x_0 with its k-step return,
@@ -78,6 +86,9 @@ def snis_reverse_rollout(model, elites, config, anchor_ob, value_goals, actor_go
     K = int(config['num_rev_candidates'])
     M = int(min(config['num_mc_predecessors'], config['num_elites']))
     beta = float(config['snis_beta'])
+    snis_mode = config.get('snis_mode', 'mean')
+    if snis_mode not in ('mean', 'tilted', 'joint'):
+        raise ValueError(f"Unsupported snis_mode: {snis_mode!r} (expected 'mean', 'tilted', or 'joint').")
     anchor_temp = float(config.get('anchor_lme_temp') or beta)
     anchor_unc_coef = float(config.get('anchor_unc_coef', 0.0))
     anchor_unc_quantile = float(config.get('anchor_unc_quantile', 1.0))
@@ -193,17 +204,39 @@ def snis_reverse_rollout(model, elites, config, anchor_ob, value_goals, actor_go
             else:
                 anchor_log_w = jax.scipy.special.logsumexp(logw_jm, axis=(0, 1)) - jnp.log(float(K * M))  # (C,)
 
-            # 3. Resample one proposal per state with weights softmax(D / beta).
-            logits = d_hat / beta
+            # 3. Resample candidate action a_j* given x.
+            if snis_mode == 'mean':
+                logits = d_hat / beta
+            else:
+                logits = jax.scipy.special.logsumexp(adv_jm / beta, axis=0) - jnp.log(float(M))  # (K, C)
             j_star = jax.random.categorical(cat_rng, logits, axis=0)  # (C,)
             ar = jnp.arange(x.shape[0])
             action = cand[j_star, ar]
 
-            # 4. Fresh predecessor from a uniformly chosen elite; store (s, a*, r, x).
-            fresh = sample_rev_all(x, action, fresh_rng)  # (E, C, D)
-            member = elites[jax.random.randint(member_rng, (x.shape[0],), 0, elites.shape[0])]
-            prev = fresh[member, ar]
-            rewards, masks = labels(prev, vg, action)
+            # 4. Select predecessor state s given (x, a_j*).
+            if snis_mode == 'mean':
+                fresh = sample_rev_all(x, action, fresh_rng)  # (E, C, D)
+                member = elites[jax.random.randint(member_rng, (x.shape[0],), 0, elites.shape[0])]
+                prev = fresh[member, ar]
+                rewards, masks = labels(prev, vg, action)
+            elif snis_mode == 'tilted':
+                fresh = sample_rev_all(x, action, fresh_rng)  # (E, C, D)
+                s_f = fresh[elites[:M]]  # (M, C, D)
+                act_f = jnp.broadcast_to(action[None], (M,) + action.shape)
+                vg_f = None if vg is None else jnp.broadcast_to(vg[None], (M,) + vg.shape)
+                ag_f = None if ag is None else jnp.broadcast_to(ag[None], (M,) + ag.shape)
+                r_f, m_f = labels(s_f, vg_f, act_f)  # (M, C)
+                v_f = v_bar_fn(s_f, vg_f, ag_f)  # (M, C)
+                adv_f = r_f + discount * m_f * v_x[0] - v_f  # (M, C)
+                m_star = jax.random.categorical(member_rng, adv_f / beta, axis=0)  # (C,)
+                prev = s_f[m_star, ar]
+                rewards = r_f[m_star, ar]
+                masks = m_f[m_star, ar]
+            else:  # 'joint': reuse (M, K) candidates; cancels the inner normalizer for exact joint SNIS.
+                m_star = jax.random.categorical(member_rng, adv_jm[:, j_star, ar] / beta, axis=0)  # (C,)
+                prev = s_jm[m_star, j_star, ar]
+                rewards = r_jm[m_star, j_star, ar]
+                masks = m_jm[m_star, j_star, ar]
 
             if multi:
                 # k-step return and survival discount from prev to the real anchor x0.
@@ -618,6 +651,7 @@ def get_config():
             num_rev_candidates=16,  # K
             num_mc_predecessors=5,  # M (<= num_elites; one predecessor per elite member)
             snis_beta=0.5,  # beta in softmax(D / beta)
+            snis_mode='mean',  # 'mean' (E_s[A]/beta + unif state), 'tilted' (LME + fresh tilted s), or 'joint' (LME + reused s).
             rollout_steps=5,  # Read by main_mbpo.py for the buffer capacity; keep equal to max_rollout_steps.
             max_rollout_steps=5,  # H
             rollout_chunk=4096,

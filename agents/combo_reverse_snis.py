@@ -267,6 +267,7 @@ def get_config(profile='ogbench'):
             num_rev_candidates=16,  # K
             num_mc_predecessors=5,  # M (<= num_elites)
             snis_beta=0.5,  # beta in softmax(D / beta)
+            snis_mode='mean',  # 'mean' (E_s[A]/beta + unif s), 'tilted' (LME + fresh tilted s), or 'joint' (LME + reused s).
             max_rollout_steps=5,  # H; keep equal to rollout_steps (buffer capacity).
             rollout_chunk=2048,
             clip_model_reward=False,  # COMBO labels model rewards without clipping.

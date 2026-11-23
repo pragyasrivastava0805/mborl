@@ -542,6 +542,7 @@ def get_config():
             num_rev_candidates=16,
             num_mc_predecessors=5,
             snis_beta=0.5,
+            snis_mode='mean',  # 'mean' (E_s[A]/beta + unif s), 'tilted' (LME + fresh tilted s), or 'joint' (LME + reused s).
             rollout_steps=5,
             max_rollout_steps=5,
             rollout_chunk=2048,
